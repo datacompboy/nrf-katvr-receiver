@@ -1,0 +1,7 @@
+source "Kconfig.zephyr"
+
+# Project-specific settings
+
+config APP_WAIT_FOR_OBSERVER
+    bool "If yes, application will wait for terminal connection to console before start"
+    default y
