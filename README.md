@@ -4,7 +4,9 @@ This app aims to implement bluetooth receiver compatible with KatVR's C2/C2+ tre
 
 ## Features
 
-So far: none
+- KatVR Sensors BT protocol
+  - Connect to multiple devices (static list: Direction, Left Feet, Right Feet)
+  - Capture notifications sent by devices and know who sent them.
 
 ## Tested on
 
@@ -55,8 +57,8 @@ So far: none
 ## TODO
 
 - KatVR Sensors BT protocol
-  - Connect & receive stream from feet sensor
-  - Connect & receive stream from direction sensor
+  - Parse BT notification from direction sensor
+  - Parse BT notification from feet sensors
   - Connect & receive events from seat
 - KatVR Gateway USB protocol
   - Devices
