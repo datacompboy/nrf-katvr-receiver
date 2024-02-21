@@ -7,68 +7,67 @@
 #include <zephyr/usb/usbd.h>
 #include <zephyr/sys/printk.h>
 
+#include "kat.h"
+
 // Ensure the console is USB-UART
 BUILD_ASSERT(DT_NODE_HAS_COMPAT(DT_CHOSEN(zephyr_console), zephyr_cdc_acm_uart),
              "Console device is not ACM CDC UART device");
 
-typedef enum { KAT_NONE=0, KAT_DIR, KAT_LEFT, KAT_RIGHT } tKatDevice;
 const char * const stKatDevice[] = { "KAT_NONE", "KAT_DIR", "KAT_LEFT", "KAT_RIGHT", "KAT_BUG" };
-
-typedef struct {
-        tKatDevice deviceType;
-} katConnectionInfo;
+BUILD_ASSERT(ARRAY_SIZE(stKatDevice)==_KAT_MAX_DEVICE+1, "Don't miss a thing!");
 
 static katConnectionInfo connections[CONFIG_BT_MAX_CONN] = {KAT_NONE};
+static tKatDeviceInfo devices[_KAT_MAX_DEVICE] = { {{KAT_NONE}} };
 
 const bt_addr_le_t katDevices[] = {
         // KAT_DIR
-        {.type=BT_ADDR_LE_PUBLIC, .a={.val={0x01, 0x74, 0xEB, 0x16, 0x4D, 0xAC}}}, // AC:4D:16:EB:74:01
+        {.type=BT_ADDR_LE_PUBLIC, .a={.val={0x01, 0x74, 0xEB, 0x16, 0x4D, 0xAC}}}, // AC:4D:16:EB:74:01 - direction
         // KAT_LEFT
-        {.type=BT_ADDR_LE_PUBLIC, .a={.val={0x54, 0x46, 0xF2, 0x66, 0x98, 0x60}}}, // 60:98:66:F2:46:54
+        //{.type=BT_ADDR_LE_PUBLIC, .a={.val={0x54, 0x46, 0xF2, 0x66, 0x98, 0x60}}}, // 60:98:66:F2:46:54 - unpaired
+        {.type=BT_ADDR_LE_PUBLIC, .a={.val={0x0B, 0x9D, 0xF3, 0x66, 0x98, 0x60}}}, // 60:98:66:F3:9D:0B - paired left
         // KAT_RIGHT
-        {.type=BT_ADDR_LE_PUBLIC, .a={.val={0x6A, 0x1C, 0xF2, 0x66, 0x98, 0x60}}}, // 60:98:66:F2:1C:6A
+        {.type=BT_ADDR_LE_PUBLIC, .a={.val={0x6A, 0x1C, 0xF2, 0x66, 0x98, 0x60}}}, // 60:98:66:F2:1C:6A - paired right
 };
 const int numKatDevices = ARRAY_SIZE(katDevices);
+BUILD_ASSERT(ARRAY_SIZE(katDevices) < _KAT_MAX_DEVICE, "We can keep only that much different devices");
 
 
-void resume_connections() {
+void do_resume_connections(struct k_work *work) {
+        ARG_UNUSED(work);
         int err = bt_conn_le_create_auto(BT_CONN_LE_CREATE_CONN_AUTO, BT_LE_CONN_PARAM_DEFAULT);
-        if (err) {
-                printk("bt_conn_le_create_auto error (%d / 0x%02d)", err, err);
+        if (err && err != -EALREADY) {
+                printk("bt_conn_le_create_auto error (%d)", err);
         } else {
                 printk("Fishing for known device in advertising stream...\n");
         }
-
+}
+K_WORK_DEFINE(resume_connections_work, do_resume_connections);
+void exp_resume_connections(struct k_timer *timer) {
+    k_work_submit(&resume_connections_work);
+}
+K_TIMER_DEFINE(resume_connection_timer, exp_resume_connections, NULL);
+void resume_connections() {
+        /* trigger fishing start with a delay, to let connection packets fly */
+        k_timer_start(&resume_connection_timer, K_MSEC(100), K_NO_WAIT);
 }
 
 static void device_connected(struct bt_conn *conn, uint8_t conn_err)
 {
 	if (!conn_err) {
-		int err;
-
                 int conn_num = bt_conn_index(conn);
 	        printk("Device connected (%p/%d)\n", conn, conn_num);
                 if (connections[conn_num].deviceType == KAT_NONE) {
-                        struct bt_le_conn_param param = {
-                                .interval_min = 8,
-                                .interval_max = 9,
-                                .latency = 0, // 100,
-                                .timeout = 500, // 600,
-                        };
-                        err = bt_conn_le_param_update(conn, &param);
-                        if (!err) {
-                                printk("Sent param update.\n");
-                        } else {
-                                printk("Error on bt_conn_le_param_update (%d/0x%02x)\n", err, err);
-                        }
-
                         int i;
                         for (i=0; i<numKatDevices; ++i) {
                                 struct bt_conn_info info;
                                 bt_conn_get_info(conn, &info);
                                 if (bt_addr_le_eq(info.le.dst, &katDevices[i])) {
-                                        connections[conn_num].deviceType = (tKatDevice)i+1; // Shift by 1 from katDevices array
-                                        printk("Connected device of type %s\n", stKatDevice[connections[conn_num].deviceType]);
+                                        tKatDevice dev = (tKatDevice)i+1; // Shift by 1 from katDevices array
+                                        connections[conn_num].deviceType = dev;
+                                        // Don't wipe last known settings to speedup reconnection
+                                        //   memset(&devices[dev], 0, sizeof(devices[dev]));
+                                        devices[dev].deviceType = dev;
+                                        printk("Connected device of type %s\n", stKatDevice[dev]);
                                         break;
                                 }
                         }
@@ -84,16 +83,37 @@ static void device_connected(struct bt_conn *conn, uint8_t conn_err)
         resume_connections();
 }
 
+static void auto_exchange_complete(struct bt_conn *conn, struct bt_conn_remote_info* remote)
+{
+        // Delay send connection change till end of other communication,
+        // as any other communication may break update stream.
+        struct bt_le_conn_param param = {
+                .interval_min = 8,
+                .interval_max = 9,
+                .latency = 10, // 100,
+                .timeout = 500, // 600,
+        };
+        int err = bt_conn_le_param_update(conn, &param);
+        if (!err) {
+                printk("Sent param update.\n");
+        } else {
+                printk("Error on bt_conn_le_param_update (%d/0x%02x)\n", err, err);
+        }
+        resume_connections();
+}
+
 static void device_disconnected(struct bt_conn *conn, uint8_t reason)
 {
 	printk("Device disconnected (%p/0x%02x)\n", conn, reason);
         int conn_num = bt_conn_index(conn);
         connections[conn_num].deviceType = KAT_NONE;
+        resume_connections();
 }
 
 BT_CONN_CB_DEFINE(conn_callbacks) = {
 	.connected = device_connected,
 	.disconnected = device_disconnected,
+        .remote_info_available = auto_exchange_complete,
 };
 
 /*
@@ -102,13 +122,34 @@ BT_CONN_CB_DEFINE(conn_callbacks) = {
 static int my_att_recv(struct bt_l2cap_chan *chan, struct net_buf *req_buf)
 {
         int id = bt_conn_index(chan->conn);
-        #if true
+        #if false
         printk("Received packet for %p %s [%d]", chan->conn, stKatDevice[connections[id].deviceType], req_buf->len);
         for (int i = 0; i<req_buf->len; ++i) {
                 printk(" %02x", req_buf->data[i]);
         }
         printk("\n");
         #endif
+        const tKatDevice dev = connections[id].deviceType;
+        switch(dev) {
+        case KAT_LEFT: [[fallthrough]];
+        case KAT_RIGHT:
+                parseFeet(req_buf, &devices[dev].foot);
+                if (devices[dev].foot.freshStatus) {
+                        devices[dev].foot.freshStatus = false;
+                        printk("%s: charge_level=%d, charge_status=%d, firmware=%d\n",
+                                stKatDevice[connections[id].deviceType],
+                                devices[dev].foot.chargeLevel,
+                                devices[dev].foot.chargeStatus,
+                                devices[dev].foot.firmwareVersion);
+                }
+                break;
+        case KAT_DIR: //FIXME
+        //        parseFeet(req_buf, &devices[dev].directionDevice);
+                break;
+        case _KAT_MAX_DEVICE: [[fallthrough]]; // should not happen, though
+        case KAT_NONE: 
+                break;
+        }
         return 0;
 }
 
