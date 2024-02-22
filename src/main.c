@@ -17,14 +17,14 @@ const char * const stKatDevice[] = { "KAT_NONE", "KAT_DIR", "KAT_LEFT", "KAT_RIG
 BUILD_ASSERT(ARRAY_SIZE(stKatDevice)==_KAT_MAX_DEVICE+1, "Don't miss a thing!");
 
 static katConnectionInfo connections[CONFIG_BT_MAX_CONN] = {KAT_NONE};
-static tKatDeviceInfo devices[_KAT_MAX_DEVICE] = { {{KAT_NONE}} };
+static tKatDeviceInfo devices[_KAT_MAX_DEVICE] = { {KAT_NONE} };
 
 const bt_addr_le_t katDevices[] = {
         // KAT_DIR
         {.type=BT_ADDR_LE_PUBLIC, .a={.val={0x01, 0x74, 0xEB, 0x16, 0x4D, 0xAC}}}, // AC:4D:16:EB:74:01 - direction
         // KAT_LEFT
-        //{.type=BT_ADDR_LE_PUBLIC, .a={.val={0x54, 0x46, 0xF2, 0x66, 0x98, 0x60}}}, // 60:98:66:F2:46:54 - unpaired
-        {.type=BT_ADDR_LE_PUBLIC, .a={.val={0x0B, 0x9D, 0xF3, 0x66, 0x98, 0x60}}}, // 60:98:66:F3:9D:0B - paired left
+        {.type=BT_ADDR_LE_PUBLIC, .a={.val={0x54, 0x46, 0xF2, 0x66, 0x98, 0x60}}}, // 60:98:66:F2:46:54 - unpaired
+        // {.type=BT_ADDR_LE_PUBLIC, .a={.val={0x0B, 0x9D, 0xF3, 0x66, 0x98, 0x60}}}, // 60:98:66:F3:9D:0B - paired left
         // KAT_RIGHT
         {.type=BT_ADDR_LE_PUBLIC, .a={.val={0x6A, 0x1C, 0xF2, 0x66, 0x98, 0x60}}}, // 60:98:66:F2:1C:6A - paired right
 };
@@ -122,33 +122,24 @@ BT_CONN_CB_DEFINE(conn_callbacks) = {
 static int my_att_recv(struct bt_l2cap_chan *chan, struct net_buf *req_buf)
 {
         int id = bt_conn_index(chan->conn);
-        #if false
-        printk("Received packet for %p %s [%d]", chan->conn, stKatDevice[connections[id].deviceType], req_buf->len);
+        const tKatDevice dev = connections[id].deviceType;
+
+        #if CONFIG_APP_PACKET_LOG
+        printk("Received packet for %p %8s [%d]", chan->conn, stKatDevice[dev], req_buf->len);
         for (int i = 0; i<req_buf->len; ++i) {
                 printk(" %02x", req_buf->data[i]);
         }
         printk("\n");
         #endif
-        const tKatDevice dev = connections[id].deviceType;
-        switch(dev) {
-        case KAT_LEFT: [[fallthrough]];
-        case KAT_RIGHT:
-                parseFeet(req_buf, &devices[dev].foot);
-                if (devices[dev].foot.freshStatus) {
-                        devices[dev].foot.freshStatus = false;
-                        printk("%s: charge_level=%d, charge_status=%d, firmware=%d\n",
-                                stKatDevice[connections[id].deviceType],
-                                devices[dev].foot.chargeLevel,
-                                devices[dev].foot.chargeStatus,
-                                devices[dev].foot.firmwareVersion);
-                }
-                break;
-        case KAT_DIR: //FIXME
-        //        parseFeet(req_buf, &devices[dev].directionDevice);
-                break;
-        case _KAT_MAX_DEVICE: [[fallthrough]]; // should not happen, though
-        case KAT_NONE: 
-                break;
+
+        parseKatBtPacket(req_buf, &devices[dev]);
+        if (devices[dev].deviceStatus.freshStatus) {
+                devices[dev].deviceStatus.freshStatus = false;
+                printk("%s: charge_level=%d, charge_status=%d, firmware=%d\n",
+                        stKatDevice[connections[id].deviceType],
+                        devices[dev].deviceStatus.chargeLevel,
+                        devices[dev].deviceStatus.chargeStatus,
+                        devices[dev].deviceStatus.firmwareVersion);
         }
         return 0;
 }

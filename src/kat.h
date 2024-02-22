@@ -1,7 +1,7 @@
 #ifndef __KAT_H__
 #define __KAT_H__
 
-typedef enum { KAT_NONE=0, KAT_DIR, KAT_LEFT, KAT_RIGHT, _KAT_MAX_DEVICE } tKatDevice;
+typedef enum __packed { KAT_NONE=0, KAT_DIR, KAT_LEFT, KAT_RIGHT, _KAT_MAX_DEVICE } tKatDevice;
 
 typedef struct {
     tKatDevice deviceType;
@@ -9,33 +9,38 @@ typedef struct {
 
 typedef struct {
     // Status
-    tKatDevice deviceType;
     char firmwareVersion;
     char chargeStatus;
     short chargeLevel;
     bool freshStatus;
+    // TODO: add timestamp
+    bool freshData;
+} tKatDeviceStatus;
+
+typedef struct {
     // Latest data
     char status1;
     char status2;
     short speed_x;
     short speed_y;
     char color;
-    // TODO: add timestamp
-    bool fresh;
 } tKatFootDevice;
 
 typedef struct {
+    // Latest data
+    short axis[7];
+    char button;
+} tKatDirDevice;
+
+typedef struct {
+    tKatDevice deviceType;
+    tKatDeviceStatus deviceStatus;
     union {
-        tKatDevice deviceType;
-        tKatFootDevice foot;
-        //tKatDirDevice direction;
+        tKatFootDevice footData;
+        tKatDirDevice dirData;
     };
 } tKatDeviceInfo;
 
-BUILD_ASSERT(offsetof(tKatDeviceInfo, foot.deviceType) == offsetof(tKatDeviceInfo, deviceType), "All tKatDeviceInfo memvers should have the same deviceType");
-
-
-void parseFeet(struct net_buf *req_buf, tKatFootDevice* footDevice);
-
+void parseKatBtPacket(struct net_buf *req_buf, tKatDeviceInfo* katDevice);
 
 #endif // __KAT_H__
