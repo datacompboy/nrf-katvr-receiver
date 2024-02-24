@@ -5,6 +5,7 @@
 #include <zephyr/drivers/uart.h>
 #include <zephyr/usb/usb_device.h>
 #include <zephyr/usb/usbd.h>
+#include <zephyr/usb/class/usb_hid.h>
 #include <zephyr/sys/printk.h>
 
 #include "kat.h"
@@ -13,11 +14,18 @@
 BUILD_ASSERT(DT_NODE_HAS_COMPAT(DT_CHOSEN(zephyr_console), zephyr_cdc_acm_uart),
              "Console device is not ACM CDC UART device");
 
+static bool try_send_update_packet(void);
+
+/*
+ * Bluetooth management.
+ */
+
 const char *const stKatDevice[] = {"KAT_NONE", "KAT_DIR", "KAT_LEFT", "KAT_RIGHT", "KAT_BUG"};
 BUILD_ASSERT(ARRAY_SIZE(stKatDevice) == _KAT_MAX_DEVICE + 1, "Don't miss a thing!");
 
 static katConnectionInfo connections[CONFIG_BT_MAX_CONN] = {KAT_NONE};
-static tKatDeviceInfo devices[_KAT_MAX_DEVICE] = {{KAT_NONE}};
+// Note: devices[0] is unused, array idexed by tKatDevice
+tKatDeviceInfo devices[_KAT_MAX_DEVICE] = {{KAT_NONE}};
 
 const bt_addr_le_t katDevices[] = {
     // KAT_DIR
@@ -31,10 +39,12 @@ const bt_addr_le_t katDevices[] = {
 const int numKatDevices = ARRAY_SIZE(katDevices);
 BUILD_ASSERT(ARRAY_SIZE(katDevices) < _KAT_MAX_DEVICE, "We can keep only that much different devices");
 
+static const struct bt_conn_le_create_param btConnCreateParam = BT_CONN_LE_CREATE_PARAM_INIT(BT_CONN_LE_OPT_NONE, BT_GAP_SCAN_FAST_INTERVAL, BT_GAP_SCAN_FAST_WINDOW);
+static const struct bt_le_conn_param btConnParam = BT_LE_CONN_PARAM_INIT(8, 40, 0, 2000);
 void do_resume_connections(struct k_work *work)
 {
     ARG_UNUSED(work);
-    int err = bt_conn_le_create_auto(BT_CONN_LE_CREATE_CONN_AUTO, BT_LE_CONN_PARAM_DEFAULT);
+    int err = bt_conn_le_create_auto(&btConnCreateParam, &btConnParam);
     if (err && err != -EALREADY)
     {
         printk("bt_conn_le_create_auto error (%d)", err);
@@ -73,10 +83,12 @@ static void device_connected(struct bt_conn *conn, uint8_t conn_err)
                 {
                     tKatDevice dev = (tKatDevice)i + 1; // Shift by 1 from katDevices array
                     connections[conn_num].deviceType = dev;
-                    // Don't wipe last known settings to speedup reconnection
-                    //   memset(&devices[dev], 0, sizeof(devices[dev]));
                     devices[dev].deviceType = dev;
+                    // To speedup gateway reconnect, report last known state if it is non-null
+                    if (devices[dev].deviceStatus.firmwareVersion > 0)
+                        devices[dev].deviceStatus.freshStatus = true;
                     printk("Connected device of type %s\n", stKatDevice[dev]);
+                    try_send_update_packet();
                     break;
                 }
             }
@@ -149,15 +161,15 @@ static int my_att_recv(struct bt_l2cap_chan *chan, struct net_buf *req_buf)
 #endif
 
     parseKatBtPacket(req_buf, &devices[dev]);
-    if (devices[dev].deviceStatus.freshStatus)
+    if (req_buf->data[3] == 0 && req_buf->data[4] == 0)
     {
-        devices[dev].deviceStatus.freshStatus = false;
         printk("%s: charge_level=%d, charge_status=%d, firmware=%d\n",
                stKatDevice[connections[id].deviceType],
                devices[dev].deviceStatus.chargeLevel,
                devices[dev].deviceStatus.chargeStatus,
                devices[dev].deviceStatus.firmwareVersion);
     }
+    try_send_update_packet();
     return 0;
 }
 
@@ -196,6 +208,194 @@ struct bt_l2cap_fixed_chan
 
 BT_L2CAP_CHANNEL_DEFINE(a_att_fixed_chan, BT_L2CAP_CID_ATT, my_att_accept, NULL);
 
+/*
+ * USB management.
+ */
+
+static const struct device *hiddev;
+bool usb_stream_enabled = false;
+atomic_t usbbusy = 0;
+enum tUsbBusiness
+{
+    cUsbOutBusy
+};
+atomic_ptr_t usb_queue = NULL;
+
+static void usb_write_and_forget(const struct device * dev, void *buf)
+{
+    int wrote = -1;
+    hid_int_ep_write(dev, buf, KAT_USB_PACKET_LEN, &wrote); // feeling lucky
+    if (wrote != KAT_USB_PACKET_LEN)
+    {
+        // This shouldn't happen. To avoid hanging USB, release it and keep trying other time.
+        atomic_clear_bit(&usbbusy, cUsbOutBusy);
+        printk("Send output bug: wrote only %d bytes instead of %d.\n", wrote, KAT_USB_PACKET_LEN);
+    }
+}
+
+static void usb_send_or_queue(const struct device * dev, void *buf)
+{
+    // Check old business status, send if were free.
+    if (!atomic_test_and_set_bit(&usbbusy, cUsbOutBusy))
+    {
+        usb_write_and_forget(dev, buf);
+    }
+    else
+    {
+        // Queue the buffer till the next time.
+        if (!atomic_ptr_cas(&usb_queue, NULL, buf))
+        {
+            printk("Output queue is busy. Packet is lost. [should not happen (tm)]");
+        }
+    }
+}
+
+// Try to send packet if there something to send
+static bool send_update_packet(const struct device * dev)
+{
+    if (!usb_stream_enabled)
+        return false;
+    // Try send status first
+    for(int i = 0; i < numKatDevices; ++i)
+    {
+        tKatDevice devId = (tKatDevice) i+1;
+        if (devices[devId].deviceStatus.freshStatus)
+        {
+            uint8_t* buf = encodeKatUsbStatus(devId, &devices[devId]);
+            if (buf) {
+                devices[devId].deviceStatus.freshStatus = false;
+                usb_write_and_forget(dev, buf);
+                return true;
+            }
+        }
+    }
+    // If there is no fresh status updates -- send data update
+    for(int i = 0; i < numKatDevices; ++i)
+    {
+        tKatDevice devId = (tKatDevice) i+1;
+        if (devices[devId].deviceStatus.freshData)
+        {
+            uint8_t* buf = encodeKatUsbData(devId, &devices[devId]);
+            if (buf) {
+                devices[devId].deviceStatus.freshData = false;
+                usb_write_and_forget(dev, buf);
+                return true;
+            }
+        }
+    }
+    // No fresh data -- nothing to send.
+    return false;
+}
+
+static bool try_send_update_packet(void)
+{
+    if (!usb_stream_enabled || !hiddev)
+        return false;
+    if (!atomic_test_and_set_bit(&usbbusy, cUsbOutBusy))
+    {
+        // if usb channel was free, we can try send packet.
+        if (send_update_packet(hiddev)) 
+        {
+            return true;
+        }
+        // If nothing to send -- clear the lock.
+        atomic_clear_bit(&usbbusy, cUsbOutBusy);
+    }
+    return false;
+}
+
+// Outgoing packet complete
+static void int_in_ready_cb(const struct device *dev)
+{
+    // We enter assuming we own the business lock.
+    // printk("USB int_in_ready_cb\n");
+    // If there queued packed to send -- send it now.
+    atomic_ptr_val_t queue = atomic_ptr_clear(&usb_queue);
+    if (queue)
+    {
+        usb_write_and_forget(dev, queue);
+    }
+    else
+    {
+        // if there is no queued packets - try to send fresh update.
+        if (!send_update_packet(dev)) {
+            // If there was nothing to send -- we clear out busy signal.
+            atomic_clear_bit(&usbbusy, cUsbOutBusy);
+        }
+    }
+}
+
+// Handle incoming packet from PC
+tKatUsbBuf usb_command_buf;
+static void int_out_ready_cb(const struct device *dev)
+{
+    int read = -1;
+    int err = hid_int_ep_read(dev, usb_command_buf, sizeof(usb_command_buf), &read);
+    // printk("USB int_out_ready_cb (%d): read %d bytes\n", err, read);
+    if (!err) {
+        if (handle_kat_usb(usb_command_buf, read))
+        {
+            usb_send_or_queue(dev, usb_command_buf);
+        }
+    }
+}
+
+static const uint8_t hid_report_desc[] = {
+    HID_ITEM(HID_ITEM_TAG_USAGE_PAGE, HID_ITEM_TYPE_GLOBAL, 2),
+    0xA0,
+    0xFF,                                       // Usage Page (Vendor Defined 0xFFA0)
+    HID_USAGE(0x01),                            // Usage (0x01)
+    HID_COLLECTION(HID_COLLECTION_APPLICATION), // Collection (Application)
+    HID_USAGE(0x01),                            //   Usage (0x01)
+    HID_LOGICAL_MIN8(0x00),                     //   Logical Minimum (0)
+    HID_LOGICAL_MAX16(0xFF, 0x00),              //   Logical Maximum (0xFF)
+    HID_REPORT_SIZE(8),                         //   Report Size (8)
+    HID_REPORT_COUNT(32),                       //   Report Count (32)
+    HID_INPUT(0x02),                            //   Input (Data,Var,Abs,No Wrap,Linear,Preferred State,No Null Position)
+    HID_USAGE(0x02),                            //   Usage (0x02)
+    HID_REPORT_SIZE(8),                         //   Report Size (8)
+    HID_REPORT_COUNT(32),                       //   Report Count (32)
+    HID_OUTPUT(0x02),                           //   Output (Data,Var,Abs,No Wrap,Linear,Preferred State,No Null Position,Non-volatile)
+    HID_USAGE(0x03),                            //   Usage (0x03)
+    HID_REPORT_SIZE(8),                         //   Report Size (8)
+    HID_REPORT_COUNT(5),                        //   Report Count (5) -- why?!
+    HID_FEATURE(0x02),                          //   Feature (Data,Var,Abs,No Wrap,Linear,Preferred State,No Null Position,Non-volatile)
+    HID_END_COLLECTION,
+};
+
+static const struct hid_ops usb_ops = {
+    .int_in_ready = int_in_ready_cb,
+    .int_out_ready = int_out_ready_cb,
+};
+
+int start_usb(void)
+{
+    int err;
+
+    initKatUsb();
+
+    hiddev = device_get_binding("HID_0");
+    if (hiddev == NULL)
+    {
+        return -ENODEV;
+    }
+
+    usb_hid_register_device(hiddev, hid_report_desc, sizeof(hid_report_desc), &usb_ops);
+
+    err = usb_hid_init(hiddev);
+    if (err)
+    {
+        printk("usb_hid_init failed: %d\n", err);
+        return err;
+    }
+
+    return usb_enable(NULL /*status_cb*/);
+}
+
+/*
+ * Startup code.
+ */
+
 int main(void)
 {
     int err;
@@ -204,10 +404,10 @@ int main(void)
     {
         const struct device *const dev = DEVICE_DT_GET(DT_CHOSEN(zephyr_console));
 
-        err = usb_enable(NULL);
+        err = start_usb();
         if (err && (err != -EALREADY))
         {
-            printk("Failed to enable USB");
+            printk("Failed to enable USB: %d\n", err);
             return err;
         }
 

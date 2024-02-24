@@ -9,6 +9,13 @@ This app aims to implement bluetooth receiver compatible with KatVR's C2/C2+ tre
   - Capture notifications sent by devices and know who sent them.
   - Parse BT notification from feet sensors
   - Parse BT notification from direction sensor
+- KatVR Gateway USB protocol
+  - Devices
+    - Expose "Kat Receiver" HID device
+  - Protocol
+    - Enable / disable stream command
+    - Sensor position notification
+    - Fake LED / Vibration commands
 
 ## Tested on
 
@@ -62,13 +69,9 @@ This app aims to implement bluetooth receiver compatible with KatVR's C2/C2+ tre
   - Connect & receive events from seat
 - KatVR Gateway USB protocol
   - Devices
-    - Expose "Kat Receiver" HID device
     - Expose "Kat Seat Receiver" HID device
   - Protocol
-    - Enable / disable stream command
-    - Sensor position notification
     - "Pair" with sensors
-    - Fake LED / Vibration commands
 - BT Peripheral mode
   - Export sensors data over BLE in standard way
   - Export connected sensors MACs over BLE in R/W mode

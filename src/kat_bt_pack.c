@@ -22,7 +22,7 @@
  *                      Bytes 0..13: 7 shorts, accelerometer data
  *                              First 4: direction, last 3 -- rotational angles, currently always zero
  *                      Byte 18: 0x80 if button press, 0 otherwise
- * 
+ *
  * Example packets, status:
  *  KAT_LEFT  [23] 1b 2e 00 00 00 00 02 00 5f 05 00 29 00 00 00 10 00 00 00 00 00 00 1c -- unpaired
  *  KAT_LEFT  [23] 1b 2e 00 00 00 02 01 00 64 05 00 29 00 00 00 b0 3d 00 00 00 00 00 77 -- paired
@@ -35,7 +35,7 @@
  *                                   ^^ charge status bits
  *                                      ^^^^^ charge level
  *                                            ^^ firmware version
- * 
+ *
  *  KAT_LEFT  [23] 1b 2e 00 01 00 00 8d 18 00 00 00 29 00 00 00 b0 3d 00 00 00 00 00 78 -- ground
  *  KAT_LEFT  [23] 1b 2e 00 01 08 4e 20 38 00 00 00 00 00 00 00 d0 00 00 00 00 00 00 1a -- air
  *  KAT_RIGHT [23] 1b 2e 00 01 00 00 92 18 00 00 00 29 00 00 00 10 00 00 00 00 00 00 83 -- ground
@@ -53,7 +53,7 @@
  *                          ^^^^^ Short 1     ^^^^^ short 4     ^^^^^ short 7
  *                                ^^^^^ Short 2     ^^^^^ short 5
  *                                      ^^^^^ Short 3     ^^^^^ short 6
-*/
+ */
 
 #include <zephyr/bluetooth/buf.h>
 
@@ -63,17 +63,22 @@
 #define KAT_CHAR_HANDLE 0x2E
 #define KAT_BT_STATUS 0
 
-typedef __PACKED_STRUCT {
-    __PACKED_UNION {
+typedef __PACKED_STRUCT
+{
+    __PACKED_UNION
+    {
         short packetType; // 0 == status, non-zero == data
-        __PACKED_STRUCT {
+        __PACKED_STRUCT
+        {
             short __zero;
             tKatDevice deviceType;
             char status;
             short chargeLevel; // network order (high, low)
             char firmwareVersion;
-        } status;
-        __PACKED_STRUCT {
+        }
+        status;
+        __PACKED_STRUCT
+        {
             short __undef0;
             char status1;
             char status2;
@@ -82,31 +87,36 @@ typedef __PACKED_STRUCT {
             short speed_y; // network order (high, low)
             char __zero;
             char color;
-        } footData;
-        __PACKED_STRUCT {
+        }
+        footData;
+        __PACKED_STRUCT
+        {
             short axis[7];
             char __undef0[4];
             char button;
             char __undef1;
-        } dirData;
+        }
+        dirData;
     };
-} tKatBtData;
+}
+tKatBtData;
 
 BUILD_ASSERT(sizeof(tKatBtData) == 20, "tKatBtData definition doesn't match expectation");
-BUILD_ASSERT(offsetof(tKatBtData, footData.color)==19, "footData structure doesn't match expectation");
-BUILD_ASSERT(offsetof(tKatBtData, dirData.button)==18, "dirData structure doesn't match expectation");
+BUILD_ASSERT(offsetof(tKatBtData, footData.color) == 19, "footData structure doesn't match expectation");
+BUILD_ASSERT(offsetof(tKatBtData, dirData.button) == 18, "dirData structure doesn't match expectation");
 
-typedef __PACKED_STRUCT {
+typedef __PACKED_STRUCT
+{
     char gatt_comand;
     char char_id;
     char __zero;
     tKatBtData data;
-} tGattKatPacket;
+}
+tGattKatPacket;
 
 BUILD_ASSERT(sizeof(tGattKatPacket) == 23, "tGattKatPacket definition doesn't match expectation");
 
-
-void parseKatBtPacket(struct net_buf *req_buf, tKatDeviceInfo* katDevice)
+void parseKatBtPacket(struct net_buf *req_buf, tKatDeviceInfo *katDevice)
 {
     // Ignore not initialized sensors
     if (katDevice->deviceType == KAT_NONE)
@@ -114,16 +124,17 @@ void parseKatBtPacket(struct net_buf *req_buf, tKatDeviceInfo* katDevice)
     // Process only valid packets
     if (req_buf->len != sizeof(tGattKatPacket))
         return;
-    tGattKatPacket * pack = (tGattKatPacket *) req_buf->data;
+    tGattKatPacket *pack = (tGattKatPacket *)req_buf->data;
     if (pack->gatt_comand != GATT_NOTIFICATION)
         return;
     if (pack->char_id != KAT_CHAR_HANDLE || pack->__zero != 0)
         return;
 
-    const tKatBtData * data = &pack->data;
+    const tKatBtData *data = &pack->data;
     if (data->packetType == KAT_BT_STATUS)
     {
-        if (!IS_ENABLED(CONFIG_APP_ACCEPT_UNPAIRED_SENSORS) && katDevice->deviceType != data->status.deviceType) {
+        if (!IS_ENABLED(CONFIG_APP_ACCEPT_UNPAIRED_SENSORS) && katDevice->deviceType != data->status.deviceType)
+        {
             /// Sensor not paired, mark it broken
             printk("Sensor is not paired! Ignoring it");
             katDevice->deviceType = KAT_NONE;
@@ -136,8 +147,10 @@ void parseKatBtPacket(struct net_buf *req_buf, tKatDeviceInfo* katDevice)
     }
     else
     {
-        switch(katDevice->deviceType) {
-        case KAT_LEFT: [[fallthrough]];
+        switch (katDevice->deviceType)
+        {
+        case KAT_LEFT:
+            [[fallthrough]];
         case KAT_RIGHT:
             /// refresh data
             katDevice->footData.color = data->footData.color;
@@ -152,8 +165,9 @@ void parseKatBtPacket(struct net_buf *req_buf, tKatDeviceInfo* katDevice)
             memcpy(&katDevice->dirData.axis, &data->dirData.axis, sizeof(data->dirData.axis));
             katDevice->dirData.button = data->dirData.button;
             break;
-        case _KAT_MAX_DEVICE: [[fallthrough]]; // Should not happen
-        case KAT_NONE: // Should not happen
+        case _KAT_MAX_DEVICE:
+            [[fallthrough]]; // Should not happen
+        case KAT_NONE:       // Should not happen
             return;
         }
         // TODO: add timestamp

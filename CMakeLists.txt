@@ -5,3 +5,4 @@ project(nrf-katvr-receiver)
 
 target_sources(app PRIVATE src/main.c)
 target_sources(app PRIVATE src/kat_bt_pack.c)
+target_sources(app PRIVATE src/kat_usb_pack.c)
