@@ -189,8 +189,9 @@ bool handle_kat_usb(uint8_t *buf, int size)
 
     case cStartRead:
         // Speed-up connection, by forcing last known status packets first
-        for (int i = 1; i < _KAT_MAX_DEVICE; ++i) {
-            if (devices[i].deviceStatus.firmwareVersion > 0) 
+        for (int i = 1; i < _KAT_MAX_DEVICE; ++i)
+        {
+            if (devices[i].deviceStatus.firmwareVersion > 0)
                 devices[i].deviceStatus.freshStatus = true;
         }
         usb_stream_enabled = true;
@@ -229,17 +230,20 @@ void initKatUsb(void)
             b->data.cAA = 0xAA;
             b->data.zero = 0;
             b->data.anscontrol.sensor_id = i;
-            if (j == KAT_USB_BUF_CONF) {
+            if (j == KAT_USB_BUF_CONF)
+            {
                 b->data.cmd = cUpdateConfig;
                 b->data.anscontrol.sensor_type = i + 1; // we rely on id-to-type mapping for communication
-            } else {
+            }
+            else
+            {
                 b->data.cmd = cUpdateData;
             }
         }
     }
 }
 
-uint8_t* encodeKatUsbStatus(tKatDevice devId, tKatDeviceInfo *katDevice)
+uint8_t *encodeKatUsbStatus(tKatDevice devId, tKatDeviceInfo *katDevice)
 {
     int dev = (int)devId - 1;
     tKatUsbPacket *b = (tKatUsbPacket *)usb_update_buf[dev][KAT_USB_BUF_CONF];
@@ -249,17 +253,19 @@ uint8_t* encodeKatUsbStatus(tKatDevice devId, tKatDeviceInfo *katDevice)
     return b->raw;
 }
 
-uint8_t* encodeKatUsbData(tKatDevice devId, tKatDeviceInfo *katDevice)
+uint8_t *encodeKatUsbData(tKatDevice devId, tKatDeviceInfo *katDevice)
 {
     int dev = (int)devId - 1;
     tKatUsbPacket *b = (tKatUsbPacket *)usb_update_buf[dev][KAT_USB_BUF_DATA];
-    switch(katDevice->deviceType) {
+    switch (katDevice->deviceType)
+    {
     case KAT_DIR:
         BUILD_ASSERT(sizeof(katDevice->dirData.axis) == sizeof(b->data.ansdirection.axis), "USB and BT structs should match");
         memcpy(b->data.ansdirection.axis, katDevice->dirData.axis, sizeof(katDevice->dirData.axis));
         b->data.ansdirection.button = katDevice->dirData.button;
         return b->raw;
-    case KAT_LEFT: [[fallthrough]];
+    case KAT_LEFT:
+        [[fallthrough]];
     case KAT_RIGHT:
         b->data.ansfoot.status1 = katDevice->footData.status1;
         b->data.ansfoot.status2 = katDevice->footData.status2;
@@ -267,7 +273,8 @@ uint8_t* encodeKatUsbData(tKatDevice devId, tKatDeviceInfo *katDevice)
         b->data.ansfoot.speed_y = katDevice->footData.speed_y;
         b->data.ansfoot.color = katDevice->footData.color;
         return b->raw;
-    case _KAT_MAX_DEVICE: [[fallthrough]];
+    case _KAT_MAX_DEVICE:
+        [[fallthrough]];
     case KAT_NONE:
         return NULL;
     }
