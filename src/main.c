@@ -49,7 +49,8 @@ static const struct bt_conn_le_create_param btConnCreateParam = {
     .timeout = 0,
     .window = 5,
 };
-static const struct bt_le_conn_param btConnParam = BT_LE_CONN_PARAM_INIT(15, 15, 0, 2000); // BT_LE_CONN_PARAM_INIT(7, 8, 0, 2000);
+BUILD_ASSERT(CONFIG_BT_CTLR_SDC_MAX_CONN_EVENT_LEN_DEFAULT <= 1500, "We need shortest possible connection intervals");
+static const struct bt_le_conn_param btConnParam = BT_LE_CONN_PARAM_INIT(6, 6, 0, 2000);
 void do_resume_connections(struct k_work *work)
 {
     ARG_UNUSED(work);
