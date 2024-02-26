@@ -9,6 +9,10 @@ This app aims to implement bluetooth receiver compatible with KatVR's C2/C2+ tre
   - Capture notifications sent by devices and know who sent them.
   - Parse BT notification from feet sensors
   - Parse BT notification from direction sensor
+  - Achieved 133Hz/sensor frequency!
+    - Default receiver has ~80Hz/sensor
+    - Single sensor has 250Hz limit;
+    - BLE4 has limit of 400Hz for all connections with single central.
 - KatVR Gateway USB protocol
   - Devices
     - Expose "Kat Receiver" HID device
@@ -72,9 +76,12 @@ This app aims to implement bluetooth receiver compatible with KatVR's C2/C2+ tre
     - Expose "Kat Seat Receiver" HID device
   - Protocol
     - "Pair" with sensors
-- BT Peripheral mode
-  - Export sensors data over BLE in standard way
+- BT Peripheral mode (doesn't seems like worth it)
   - Export connected sensors MACs over BLE in R/W mode
+  - Export sensors data over BLE in standard way
+    - unlikely with standard sensors.
+    - it could be possible to reexport over BLE, but in 1 packet that contains all 3 sensors data without gaps, increased MTU and packets frequency decreased down to ~80hz...
+    - or should be possible to update firmware to enable 2Mbit PHY, then it *may* fit. more digging needed.
 - Moonshots
   - Support on-chip 6-axis IMU (e.g. from Seeed Studio XIAO nRF52840 Sense) for "head" direction
   - on-chip gateway, mixing IMU & sensors and export data over HID
