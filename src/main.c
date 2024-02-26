@@ -26,32 +26,46 @@ BUILD_ASSERT(ARRAY_SIZE(stKatDevice) == _KAT_MAX_DEVICE + 1, "Don't miss a thing
 static katConnectionInfo connections[CONFIG_BT_MAX_CONN] = {KAT_NONE};
 // Note: devices[0] is unused, array idexed by tKatDevice
 tKatDeviceInfo devices[_KAT_MAX_DEVICE] = {{KAT_NONE}};
+atomic_t numConnections = 0;
 
 const bt_addr_le_t katDevices[] = {
     // KAT_DIR
-    {.type = BT_ADDR_LE_PUBLIC, .a = {.val = {0x01, 0x74, 0xEB, 0x16, 0x4D, 0xAC}}}, // AC:4D:16:EB:74:01 - direction
+    // {.type = BT_ADDR_LE_PUBLIC, .a = {.val = {0x01, 0x74, 0xEB, 0x16, 0x4D, 0xAC}}}, // AC:4D:16:EB:74:01 - direction - unpaired
+    {.type = BT_ADDR_LE_PUBLIC, .a = {.val = {0xCA, 0xF8, 0xF8, 0x66, 0x98, 0x60}}}, // 60:98:66:F8:F8:CA - direction - paired
+
     // KAT_LEFT
-    {.type = BT_ADDR_LE_PUBLIC, .a = {.val = {0x54, 0x46, 0xF2, 0x66, 0x98, 0x60}}}, // 60:98:66:F2:46:54 - unpaired
-    // {.type=BT_ADDR_LE_PUBLIC, .a={.val={0x0B, 0x9D, 0xF3, 0x66, 0x98, 0x60}}}, // 60:98:66:F3:9D:0B - paired left
+    // {.type = BT_ADDR_LE_PUBLIC, .a = {.val = {0x54, 0x46, 0xF2, 0x66, 0x98, 0x60}}}, // 60:98:66:F2:46:54 - unpaired
+    {.type = BT_ADDR_LE_PUBLIC, .a={.val={0x0B, 0x9D, 0xF3, 0x66, 0x98, 0x60}}}, // 60:98:66:F3:9D:0B - paired left
+
     // KAT_RIGHT
     {.type = BT_ADDR_LE_PUBLIC, .a = {.val = {0x6A, 0x1C, 0xF2, 0x66, 0x98, 0x60}}}, // 60:98:66:F2:1C:6A - paired right
 };
 const int numKatDevices = ARRAY_SIZE(katDevices);
 BUILD_ASSERT(ARRAY_SIZE(katDevices) < _KAT_MAX_DEVICE, "We can keep only that much different devices");
 
-static const struct bt_conn_le_create_param btConnCreateParam = BT_CONN_LE_CREATE_PARAM_INIT(BT_CONN_LE_OPT_NONE, BT_GAP_SCAN_FAST_INTERVAL, BT_GAP_SCAN_FAST_WINDOW);
-static const struct bt_le_conn_param btConnParam = BT_LE_CONN_PARAM_INIT(8, 40, 0, 2000);
+static const struct bt_conn_le_create_param btConnCreateParam = {
+    .options = BT_CONN_LE_OPT_NONE,
+    .interval = BT_GAP_SCAN_FAST_INTERVAL,
+    .timeout = 0,
+    .window = 5,
+};
+static const struct bt_le_conn_param btConnParam = BT_LE_CONN_PARAM_INIT(15, 15, 0, 2000); // BT_LE_CONN_PARAM_INIT(7, 8, 0, 2000);
 void do_resume_connections(struct k_work *work)
 {
     ARG_UNUSED(work);
-    int err = bt_conn_le_create_auto(&btConnCreateParam, &btConnParam);
-    if (err && err != -EALREADY)
-    {
-        printk("bt_conn_le_create_auto error (%d)", err);
-    }
-    else
-    {
-        printk("Fishing for known device in advertising stream...\n");
+    if (atomic_get(&numConnections) < numKatDevices) {
+        int err = bt_conn_le_create_auto(&btConnCreateParam, &btConnParam);
+        if (err == -EALREADY) {
+
+        }
+        else if (err && err != -EALREADY)
+        {
+            printk("bt_conn_le_create_auto error (%d)", err);
+        }
+        else
+        {
+            printk("Fishing for known device in advertising stream...\n");
+        }
     }
 }
 K_WORK_DEFINE(resume_connections_work, do_resume_connections);
@@ -66,12 +80,21 @@ void resume_connections()
     k_timer_start(&resume_connection_timer, K_MSEC(100), K_NO_WAIT);
 }
 
+/* internal... */
+int bt_conn_le_conn_update(struct bt_conn *conn, const struct bt_le_conn_param *param);
+int bt_l2cap_update_conn_param(struct bt_conn *conn, const struct bt_le_conn_param *param);
+/* *** */
+
 static void device_connected(struct bt_conn *conn, uint8_t conn_err)
 {
     if (!conn_err)
     {
+        atomic_inc(&numConnections);
         int conn_num = bt_conn_index(conn);
         printk("Device connected (%p/%d)\n", conn, conn_num);
+
+        // bt_l2cap_update_conn_param(conn, &btConnParam);
+
         if (connections[conn_num].deviceType == KAT_NONE)
         {
             int i;
@@ -87,6 +110,7 @@ static void device_connected(struct bt_conn *conn, uint8_t conn_err)
                     // To speedup gateway reconnect, report last known state if it is non-null
                     if (devices[dev].deviceStatus.firmwareVersion > 0)
                         devices[dev].deviceStatus.freshStatus = true;
+                    devices[dev].deviceStatus.connect_ts = k_uptime_get();
                     printk("Connected device of type %s\n", stKatDevice[dev]);
                     try_send_update_packet();
                     break;
@@ -95,7 +119,7 @@ static void device_connected(struct bt_conn *conn, uint8_t conn_err)
             if (i == numKatDevices)
             {
                 printk("Unexpected device connected, disconnect!");
-                bt_conn_disconnect(conn, BT_HCI_ERR_REMOTE_USER_TERM_CONN);
+                bt_conn_disconnect(conn, BT_HCI_ERR_UNACCEPT_CONN_PARAM);
             }
         }
     }
@@ -107,16 +131,18 @@ static void device_connected(struct bt_conn *conn, uint8_t conn_err)
     resume_connections();
 }
 
+static const struct bt_le_conn_param param = {
+    // .interval_min = 7,
+    // .interval_max = 8,
+    .interval_min = btConnParam.interval_min,
+    .interval_max = btConnParam.interval_max,
+    .latency = 0,
+    .timeout = 500,
+};
 static void auto_exchange_complete(struct bt_conn *conn, struct bt_conn_remote_info *remote)
 {
     // Delay send connection change till end of other communication,
     // as any other communication may break update stream.
-    struct bt_le_conn_param param = {
-        .interval_min = 8,
-        .interval_max = 9,
-        .latency = 10,  // 100,
-        .timeout = 500, // 600,
-    };
     int err = bt_conn_le_param_update(conn, &param);
     if (!err)
     {
@@ -131,6 +157,7 @@ static void auto_exchange_complete(struct bt_conn *conn, struct bt_conn_remote_i
 
 static void device_disconnected(struct bt_conn *conn, uint8_t reason)
 {
+    atomic_dec(&numConnections);
     printk("Device disconnected (%p/0x%02x)\n", conn, reason);
     int conn_num = bt_conn_index(conn);
     connections[conn_num].deviceType = KAT_NONE;
@@ -142,6 +169,50 @@ BT_CONN_CB_DEFINE(conn_callbacks) = {
     .disconnected = device_disconnected,
     .remote_info_available = auto_exchange_complete,
 };
+
+//
+// Track and print latest statistics for the received packets
+//
+#define LINEUP "\r\33[2K"
+static int stat[6]={0};
+static int stat_sec[6][6]={{0}};
+static int64_t last_sec = -1;
+void track_stat(int dev, int pack, struct bt_conn* conn)
+{
+    if (dev) {
+        stat[(dev-1)*2+pack]++;
+
+        int64_t now = k_uptime_get();
+        if (now - last_sec >= 1000) {
+            // Yeah yeah, i know, it's imprecise
+            for (int i=0; i<ARRAY_SIZE(stat_sec)-1; ++i) {
+                memcpy(&stat_sec[i], &stat_sec[i+1], sizeof(stat_sec[i]));
+            }
+            memcpy(&stat_sec[ARRAY_SIZE(stat_sec)-1], &stat, sizeof(stat));
+            if (last_sec < 0)
+                last_sec = now;
+            else
+                last_sec += 1000;
+
+            #define SEC1s(i) (stat_sec[5][i]-stat_sec[4][i])
+            #define SEC5s(i) ((stat_sec[5][i]-stat_sec[0][i])*1000/5)
+
+            printk(LINEUP 
+                        "Dd:%d Ds:%d Ld:%d Ls:%d Rd:%d Rs:%d  "
+                        "D1d:%d D1s:%d L1d:%d L1s:%d R1d:%d R1s:%d  "
+                        "D5d:%d D5s:%d L5d:%d L5s:%d R5d:%d R5s:%d  "
+                    , stat[0], stat[1], stat[2], stat[3], stat[4], stat[5]
+                    ,SEC1s(0),SEC1s(1),SEC1s(2),SEC1s(3),SEC1s(4),SEC1s(5)
+                    ,SEC5s(0),SEC5s(1),SEC5s(2),SEC5s(3),SEC5s(4),SEC5s(5)
+                    );
+            // haaack. note : we check only once second pass, it could be not every dev is checked.
+            if (false && SEC1s((dev-1)*2) < 30 && (now - devices[dev].deviceStatus.connect_ts) > 5000) {
+                printk("Sensor too slow, reconnect...\n");
+                bt_conn_disconnect(conn, BT_HCI_ERR_UNACCEPT_CONN_PARAM);
+            }
+        }
+    }
+}
 
 /*
   Hack to get ATT stream before ATT/GATT driver.
@@ -161,6 +232,7 @@ static int my_att_recv(struct bt_l2cap_chan *chan, struct net_buf *req_buf)
 #endif
 
     parseKatBtPacket(req_buf, &devices[dev]);
+    /*
     if (req_buf->data[3] == 0 && req_buf->data[4] == 0)
     {
         printk("%s: charge_level=%d, charge_status=%d, firmware=%d\n",
@@ -169,6 +241,9 @@ static int my_att_recv(struct bt_l2cap_chan *chan, struct net_buf *req_buf)
                devices[dev].deviceStatus.chargeStatus,
                devices[dev].deviceStatus.firmwareVersion);
     }
+    */
+    track_stat(dev, (req_buf->data[3] == 0 && req_buf->data[4] == 0), chan->conn);
+
     try_send_update_packet();
     return 0;
 }
@@ -181,7 +256,7 @@ static int my_att_accept(struct bt_conn *conn, struct bt_l2cap_chan **ch)
     };
 
     int id = bt_conn_index(conn);
-    printk("Capturing L2CAP ATT channel on connection %p/%d\n", conn, id);
+    // printk("Capturing L2CAP ATT channel on connection %p/%d\n", conn, id);
 
     struct bt_l2cap_le_chan *chan = &my_att_chan_pool[id];
     chan->chan.ops = &ops;
@@ -221,7 +296,7 @@ enum tUsbBusiness
 };
 atomic_ptr_t usb_queue = NULL;
 
-static void usb_write_and_forget(const struct device * dev, void *buf)
+static void usb_write_and_forget(const struct device *dev, void *buf)
 {
     int wrote = -1;
     hid_int_ep_write(dev, buf, KAT_USB_PACKET_LEN, &wrote); // feeling lucky
@@ -233,7 +308,7 @@ static void usb_write_and_forget(const struct device * dev, void *buf)
     }
 }
 
-static void usb_send_or_queue(const struct device * dev, void *buf)
+static void usb_send_or_queue(const struct device *dev, void *buf)
 {
     // Check old business status, send if were free.
     if (!atomic_test_and_set_bit(&usbbusy, cUsbOutBusy))
@@ -251,18 +326,19 @@ static void usb_send_or_queue(const struct device * dev, void *buf)
 }
 
 // Try to send packet if there something to send
-static bool send_update_packet(const struct device * dev)
+static bool send_update_packet(const struct device *dev)
 {
     if (!usb_stream_enabled)
         return false;
     // Try send status first
-    for(int i = 0; i < numKatDevices; ++i)
+    for (int i = 0; i < numKatDevices; ++i)
     {
-        tKatDevice devId = (tKatDevice) i+1;
+        tKatDevice devId = (tKatDevice)i + 1;
         if (devices[devId].deviceStatus.freshStatus)
         {
-            uint8_t* buf = encodeKatUsbStatus(devId, &devices[devId]);
-            if (buf) {
+            uint8_t *buf = encodeKatUsbStatus(devId, &devices[devId]);
+            if (buf)
+            {
                 devices[devId].deviceStatus.freshStatus = false;
                 usb_write_and_forget(dev, buf);
                 return true;
@@ -270,13 +346,14 @@ static bool send_update_packet(const struct device * dev)
         }
     }
     // If there is no fresh status updates -- send data update
-    for(int i = 0; i < numKatDevices; ++i)
+    for (int i = 0; i < numKatDevices; ++i)
     {
-        tKatDevice devId = (tKatDevice) i+1;
+        tKatDevice devId = (tKatDevice)i + 1;
         if (devices[devId].deviceStatus.freshData)
         {
-            uint8_t* buf = encodeKatUsbData(devId, &devices[devId]);
-            if (buf) {
+            uint8_t *buf = encodeKatUsbData(devId, &devices[devId]);
+            if (buf)
+            {
                 devices[devId].deviceStatus.freshData = false;
                 usb_write_and_forget(dev, buf);
                 return true;
@@ -294,7 +371,7 @@ static bool try_send_update_packet(void)
     if (!atomic_test_and_set_bit(&usbbusy, cUsbOutBusy))
     {
         // if usb channel was free, we can try send packet.
-        if (send_update_packet(hiddev)) 
+        if (send_update_packet(hiddev))
         {
             return true;
         }
@@ -318,7 +395,8 @@ static void int_in_ready_cb(const struct device *dev)
     else
     {
         // if there is no queued packets - try to send fresh update.
-        if (!send_update_packet(dev)) {
+        if (!send_update_packet(dev))
+        {
             // If there was nothing to send -- we clear out busy signal.
             atomic_clear_bit(&usbbusy, cUsbOutBusy);
         }
@@ -332,7 +410,8 @@ static void int_out_ready_cb(const struct device *dev)
     int read = -1;
     int err = hid_int_ep_read(dev, usb_command_buf, sizeof(usb_command_buf), &read);
     // printk("USB int_out_ready_cb (%d): read %d bytes\n", err, read);
-    if (!err) {
+    if (!err)
+    {
         if (handle_kat_usb(usb_command_buf, read))
         {
             usb_send_or_queue(dev, usb_command_buf);

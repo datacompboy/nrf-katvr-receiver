@@ -30,6 +30,7 @@ typedef struct
     bool freshStatus;
     // TODO: add timestamp
     bool freshData;
+    int64_t connect_ts;
 } tKatDeviceStatus;
 
 typedef struct
