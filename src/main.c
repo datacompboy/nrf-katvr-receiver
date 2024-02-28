@@ -1,3 +1,5 @@
+#include <stdlib.h>
+
 #include <zephyr/kernel.h>
 #include <zephyr/bluetooth/bluetooth.h>
 #include <zephyr/bluetooth/conn.h>
@@ -6,6 +8,7 @@
 #include <zephyr/usb/usb_device.h>
 #include <zephyr/usb/usbd.h>
 #include <zephyr/usb/class/usb_hid.h>
+#include <zephyr/settings/settings.h>
 #include <zephyr/sys/printk.h>
 
 #include "kat.h"
@@ -27,8 +30,145 @@ static katConnectionInfo connections[CONFIG_BT_MAX_CONN] = {KAT_NONE};
 // Note: devices[0] is unused, array idexed by tKatDevice
 tKatDeviceInfo devices[_KAT_MAX_DEVICE] = {{KAT_NONE}};
 atomic_t numConnections = 0;
+char katUsbSerial[sizeof(CONFIG_USB_DEVICE_SN)] = CONFIG_USB_DEVICE_SN;
+BUILD_ASSERT(sizeof(katUsbSerial)-1 <= 12, "The KAT Gateway only support serials up to 12 chars.");
 
-const bt_addr_le_t katDevices[] = {
+// internal!
+struct usb_sn_descriptor {
+	uint8_t bLength;
+	uint8_t bDescriptorType;
+	uint16_t bString[sizeof(CONFIG_USB_DEVICE_SN)-1];
+} __packed;
+#define USB_DESC_SERIAL_NUMBER_IDX			3
+extern struct usb_desc_header __usb_descriptor_start[];
+extern struct usb_desc_header __usb_descriptor_end[];
+static struct usb_sn_descriptor * find_sn_descriptor()
+{
+    int descIdx = 0;
+    struct usb_desc_header *head = __usb_descriptor_start;
+    while (head->bLength != 0U) {
+        if (head->bDescriptorType == USB_DESC_STRING) {
+            if (descIdx == USB_DESC_SERIAL_NUMBER_IDX) {
+                return (struct usb_sn_descriptor *)head;
+            }
+            descIdx++;
+        }
+        head = (struct usb_desc_header *)((uint8_t *)head + head->bLength);
+    }
+    // We only search within the 1st, primary, descriptor.
+    return NULL;
+}
+void update_usb_serial(void)
+{
+    struct usb_sn_descriptor * serial = find_sn_descriptor();
+    if (!serial) {
+        printk("Can't find USB Serial descriptor!\n");
+        return;
+    }
+    if (serial->bLength != sizeof(CONFIG_USB_DEVICE_SN)  * 2) {
+        printk("Unexpected USB Serial descriptor length!\n");
+        return;
+    }
+    for (int i=0; i < sizeof(CONFIG_USB_DEVICE_SN)-1; ++i) {
+        serial->bString[i] = katUsbSerial[i];
+    }
+    printk("Update of USB serial to %s\n", katUsbSerial);
+}
+// internal!
+
+#ifdef CONFIG_SETTINGS
+bt_addr_le_t katDevices[_KAT_MAX_DEVICE-1] = {};
+int numKatDevices = 0;
+
+int katreceiver_settings_set(const char *key, size_t len, settings_read_cb read_cb, void *cb_arg)
+{
+    const char *next;
+    int ret;
+
+    if (settings_name_steq(key, "devCnt", &next) && !next) {
+        if (len != sizeof(numKatDevices)) {
+            return -EINVAL;
+        }
+
+        ret = read_cb(cb_arg, &numKatDevices, sizeof(numKatDevices));
+        if (ret < 0) {
+            numKatDevices = 0;
+            return ret;
+        }
+        return 0;
+    }
+
+    if (settings_name_steq(key, "serial", &next) && !next) {
+        if (len != sizeof(katUsbSerial)) {
+            return -EINVAL;
+        }
+
+        ret = read_cb(cb_arg, &katUsbSerial, sizeof(katUsbSerial));
+        if (ret < 0) {
+            strncpy(katUsbSerial, CONFIG_USB_DEVICE_SN, sizeof(katUsbSerial));
+            katUsbSerial[sizeof(katUsbSerial)-1] = 0;
+            return ret;
+        }
+        update_usb_serial();
+        return 0;
+    }
+
+    if (settings_name_steq(key, "dev", &next) && next) {
+        int dev = atoi(next);
+
+        if (dev < 0 || dev > ARRAY_SIZE(katDevices)) {
+            return -ENOENT;
+        }
+
+        if (len != sizeof(katDevices[dev].a)) {
+            return -EINVAL;
+        }
+
+        katDevices[dev].type = BT_ADDR_LE_PUBLIC; // Well, it's just zero, so noop.
+        ret = read_cb(cb_arg, &katDevices[dev].a, sizeof(katDevices[dev].a));
+        if (ret < 0) {
+            memset(&katDevices[dev].a, 0, sizeof(katDevices[dev].a));
+            return ret;
+        }
+        return 0;
+    }
+
+    return -ENOENT;
+}
+
+int katreceiver_settings_export(int(*export_func)(const char *name, const void *val, size_t val_len))
+{
+    int ret;
+
+    ret = export_func("katrc/serial", &katUsbSerial, sizeof(katUsbSerial));
+    if (ret < 0) return ret;
+
+    ret = export_func("katrc/devCnt", &numKatDevices, sizeof(numKatDevices));
+    if (ret < 0) return ret;
+
+    char argstr[100] = "katrc/dev/";
+    char * argsuffix = &argstr[strlen(argstr)]; // argsuffix now is the pointer beyond "/"
+    for (int dev = 0; dev < numKatDevices; ++dev) {
+        sprintf(argsuffix, "%d", dev); // argstr now katrc/dev/N
+        ret = export_func(argstr, &katDevices[dev].a, sizeof(katDevices[dev].a));
+        if (ret < 0) return ret;
+    }
+    return 0;
+}
+
+SETTINGS_STATIC_HANDLER_DEFINE(
+    katrc, "katrc", /*get=*/NULL, /*set=*/katreceiver_settings_set, /*commit=*/NULL, /*export=*/katreceiver_settings_export);
+
+ASYNC_FUNC(async_save_settings, K_MSEC(1000))
+{
+    int err = settings_save();
+    if (err) {
+        printk("Error saving settings: %d\n", err);
+    }
+}
+
+#else
+bt_addr_le_t katDevices[] = {
     // KAT_DIR
     // {.type = BT_ADDR_LE_PUBLIC, .a = {.val = {0x01, 0x74, 0xEB, 0x16, 0x4D, 0xAC}}}, // AC:4D:16:EB:74:01 - direction - unpaired
     {.type = BT_ADDR_LE_PUBLIC, .a = {.val = {0xCA, 0xF8, 0xF8, 0x66, 0x98, 0x60}}}, // 60:98:66:F8:F8:CA - direction - paired
@@ -40,8 +180,56 @@ const bt_addr_le_t katDevices[] = {
     // KAT_RIGHT
     {.type = BT_ADDR_LE_PUBLIC, .a = {.val = {0x6A, 0x1C, 0xF2, 0x66, 0x98, 0x60}}}, // 60:98:66:F2:1C:6A - paired right
 };
-const int numKatDevices = ARRAY_SIZE(katDevices);
+int numKatDevices = ARRAY_SIZE(katDevices);
 BUILD_ASSERT(ARRAY_SIZE(katDevices) < _KAT_MAX_DEVICE, "We can keep only that much different devices");
+#endif
+
+static void do_disconnect(struct bt_conn *conn, void *data)
+{
+    ARG_UNUSED(data);
+    bt_conn_disconnect(conn, BT_HCI_ERR_REMOTE_USER_TERM_CONN);
+}
+
+
+void bt_disconnect_all()
+{
+    bt_conn_foreach(BT_CONN_TYPE_LE, do_disconnect, NULL);
+}
+
+int setup_bt_filter()
+{
+    int err = bt_le_filter_accept_list_clear();
+    if (err)
+    {
+        printk("bt_le_filter_accept_list_clear error (%d / 0x%02d)", err, err);
+        return err;
+    }
+
+    for (int i = 0; i < numKatDevices; ++i)
+    {
+        if (! bt_addr_le_eq(&bt_addr_le_any, &katDevices[i])) {
+            char addr_str[BT_ADDR_LE_STR_LEN];
+            bt_addr_le_to_str(&katDevices[i], addr_str, sizeof(addr_str));
+            printk("Adding to accept list device %s: %s\n", stKatDevice[i + 1], addr_str);
+            err = bt_le_filter_accept_list_add(&katDevices[i]);
+            if (err)
+            {
+                printk("bt_le_filter_accept_list_add error (%d / 0x%02d)", err, err);
+                return err;
+            }
+        }
+    }
+
+    return 0;
+}
+
+ASYNC_FUNC(reset_bt_filter, K_MSEC(100))
+{
+    bt_conn_create_auto_stop();
+    bt_disconnect_all();
+    setup_bt_filter();
+    resume_connections();
+}
 
 static const struct bt_conn_le_create_param btConnCreateParam = {
     .options = BT_CONN_LE_OPT_NONE,
@@ -51,9 +239,8 @@ static const struct bt_conn_le_create_param btConnCreateParam = {
 };
 BUILD_ASSERT(CONFIG_BT_CTLR_SDC_MAX_CONN_EVENT_LEN_DEFAULT <= 1500, "We need shortest possible connection intervals");
 static const struct bt_le_conn_param btConnParam = BT_LE_CONN_PARAM_INIT(6, 6, 0, 2000);
-void do_resume_connections(struct k_work *work)
+ASYNC_FUNC(resume_connections, K_MSEC(100))
 {
-    ARG_UNUSED(work);
     if (atomic_get(&numConnections) < numKatDevices) {
         int err = bt_conn_le_create_auto(&btConnCreateParam, &btConnParam);
         if (err == -EALREADY) {
@@ -68,17 +255,6 @@ void do_resume_connections(struct k_work *work)
             printk("Fishing for known device in advertising stream...\n");
         }
     }
-}
-K_WORK_DEFINE(resume_connections_work, do_resume_connections);
-void exp_resume_connections(struct k_timer *timer)
-{
-    k_work_submit(&resume_connections_work);
-}
-K_TIMER_DEFINE(resume_connection_timer, exp_resume_connections, NULL);
-void resume_connections()
-{
-    /* trigger fishing start with a delay, to let connection packets fly */
-    k_timer_start(&resume_connection_timer, K_MSEC(100), K_NO_WAIT);
 }
 
 /* internal... */
@@ -283,6 +459,7 @@ struct bt_l2cap_fixed_chan
 #endif
 
 BT_L2CAP_CHANNEL_DEFINE(a_att_fixed_chan, BT_L2CAP_CID_ATT, my_att_accept, NULL);
+
 
 /*
  * USB management.
@@ -511,18 +688,22 @@ int main(void)
         printk("Bluetooth init failed (err %d)\n", err);
         return 0;
     }
-
     printk("Bluetooth initialized\n");
-    for (int i = 0; i < numKatDevices; ++i)
-    {
-        printk("Adding to accept list device %s...\n", stKatDevice[i + 1]);
-        err = bt_le_filter_accept_list_add(&katDevices[i]);
+
+    if (IS_ENABLED(CONFIG_SETTINGS)) {
+        err = settings_subsys_init();
         if (err)
         {
-            printk("bt_le_filter_accept_list_add error (%d / 0x%02d)", err, err);
+            printk("Error starting settings subsystem (err %d)\n", err);
+        }
+        err = settings_load();
+        if (err)
+        {
+            printk("Error loading settings (err %d)\n", err);
         }
     }
 
+    setup_bt_filter();
     resume_connections();
 
     return 0;

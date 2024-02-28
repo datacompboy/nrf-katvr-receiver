@@ -1,5 +1,3 @@
-#include <zephyr/bluetooth/bluetooth.h>
-
 #include "kat.h"
 
 /*
@@ -158,6 +156,10 @@ bool handle_kat_usb(uint8_t *buf, int size)
         return true;
 
     case cSetSN:
+        strncpy(katUsbSerial, pack->data.ansstring.ans, sizeof(CONFIG_USB_DEVICE_SN));
+        katUsbSerial[sizeof(CONFIG_USB_DEVICE_SN)-1] = 0;
+        update_usb_serial();
+        async_save_settings();
         return false;
 
     case cGetSensorInformation:
@@ -171,9 +173,9 @@ bool handle_kat_usb(uint8_t *buf, int size)
 
     case cReadPairing:
         pack->data.ansaddrs.zero = 0;
-        const int cnt = MIN(numKatDevices, ARRAY_SIZE(pack->data.ansaddrs.addrs));
-        pack->data.ansaddrs.count = cnt;
-        for (int i = 0; i < cnt; ++i)
+        const int rcnt = MIN(numKatDevices, ARRAY_SIZE(pack->data.ansaddrs.addrs));
+        pack->data.ansaddrs.count = rcnt;
+        for (int i = 0; i < rcnt; ++i)
         {
             BUILD_ASSERT(sizeof(pack->data.ansaddrs.addrs[i]) == sizeof(katDevices[i].a), "Size of BT address should match");
             memcpy(&pack->data.ansaddrs.addrs[i], &katDevices[i].a, sizeof(katDevices[i].a));
@@ -181,7 +183,15 @@ bool handle_kat_usb(uint8_t *buf, int size)
         return true;
 
     case cWritePairing:
-        // TODO: save MAC addresses of a given sensors.
+        const int wcnt = MIN(ARRAY_SIZE(katDevices), pack->data.ansaddrs.count);
+        numKatDevices = wcnt;
+        for (int i = 0; i < wcnt; ++i)
+        {
+            BUILD_ASSERT(sizeof(pack->data.ansaddrs.addrs[i]) == sizeof(katDevices[i].a), "Size of BT address should match");
+            memcpy(&katDevices[i].a, &pack->data.ansaddrs.addrs[i], sizeof(katDevices[i].a));
+        }
+        reset_bt_filter();
+        async_save_settings();
         return false;
 
     case cDeepSleep:

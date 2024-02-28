@@ -20,6 +20,11 @@ This app aims to implement bluetooth receiver compatible with KatVR's C2/C2+ tre
     - Enable / disable stream command
     - Sensor position notification
     - Fake LED / Vibration commands
+    - Pair with sensors
+    - Allow to set SerialNumber for cloning (use device-uniq serial otherwise)
+- KatVr Gateway Compatibility
+  - Device can be used as separate receiver, by following standard pairing procedure
+  - Device can clone settings from existing KAT receiver using provided `clone-kat-device.ps1` powershell script.
 
 ## Tested on
 
@@ -74,8 +79,7 @@ This app aims to implement bluetooth receiver compatible with KatVR's C2/C2+ tre
 - KatVR Gateway USB protocol
   - Devices
     - Expose "Kat Seat Receiver" HID device
-  - Protocol
-    - "Pair" with sensors
+    - Let to choose mimic C2/C2+ or C2Core receivers
 - BT Peripheral mode (doesn't seems like worth it)
   - Export connected sensors MACs over BLE in R/W mode
   - Export sensors data over BLE in standard way

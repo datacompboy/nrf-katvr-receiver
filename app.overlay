@@ -7,7 +7,3 @@ For now, enable single USB-UART that act as a debug console.
 		zephyr,console = &usb_cdc_acm_uart;
 	};
 };
-
-&zephyr_udc0 {
-	
-};
