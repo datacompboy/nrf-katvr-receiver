@@ -57,7 +57,8 @@
 
 #include <zephyr/bluetooth/buf.h>
 
-#include "kat.h"
+#include "kat_main.h"
+#include "kat_ble.h"
 
 #define GATT_NOTIFICATION 0x1B
 #define KAT_CHAR_HANDLE 0x2E
@@ -71,7 +72,7 @@ typedef __PACKED_STRUCT
         __PACKED_STRUCT
         {
             short __zero;
-            tKatDevice deviceType;
+            eKatDevice deviceType;
             char status;
             short chargeLevel; // network order (high, low)
             char firmwareVersion;
@@ -116,7 +117,7 @@ tGattKatPacket;
 
 BUILD_ASSERT(sizeof(tGattKatPacket) == 23, "tGattKatPacket definition doesn't match expectation");
 
-void parseKatBtPacket(struct net_buf *req_buf, tKatDeviceInfo *katDevice)
+void kat_ble_handle_packet(struct net_buf *req_buf, sKatDeviceInfo *katDevice)
 {
     // Ignore not initialized sensors
     if (katDevice->deviceType == KAT_NONE)

@@ -1,4 +1,11 @@
-#include "kat.h"
+#include <stdbool.h>
+#include <stdint.h>
+
+#include <zephyr/kernel.h>
+
+#include "kat_main.h"
+#include "kat_ble.h"
+#include "kat_usb.h"
 
 /*
  * USB protocol
@@ -113,7 +120,7 @@ static tKatUsbBuf usb_update_buf[_KAT_MAX_DEVICE - 1][KAT_USB_BUFS];
 //
 // Returns true if buf now contains the answer to send.
 //
-bool handle_kat_usb(uint8_t *buf, int size)
+bool kat_usb_handle_request(uint8_t *buf, int size)
 {
 #if CONFIG_APP_PACKET_LOG
     printk("USB packet [%2d]:", size);
@@ -158,40 +165,37 @@ bool handle_kat_usb(uint8_t *buf, int size)
     case cSetSN:
         strncpy(katUsbSerial, pack->data.ansstring.ans, sizeof(CONFIG_USB_DEVICE_SN));
         katUsbSerial[sizeof(CONFIG_USB_DEVICE_SN)-1] = 0;
-        update_usb_serial();
-        async_save_settings();
+        kat_usb_update_serial();
+        kat_settings_async_save();
         return false;
 
     case cGetSensorInformation:
         // Return local MAC address
-        bt_addr_le_t addr;
-        size_t count = 1;
-        bt_id_get(&addr, &count); // get only the 1st
         pack->data.ansstring.zero = 0;
-        memcpy(pack->data.ansstring.ans, addr.a.val, sizeof(addr.a.val));
+        kat_ble_get_localaddr(pack->data.ansstring.ans, sizeof(pack->data.ansstring.ans));
         return true;
 
     case cReadPairing:
         pack->data.ansaddrs.zero = 0;
-        const int rcnt = MIN(numKatDevices, ARRAY_SIZE(pack->data.ansaddrs.addrs));
+        const int rcnt = MIN(NumKatBleDevices, ARRAY_SIZE(pack->data.ansaddrs.addrs));
         pack->data.ansaddrs.count = rcnt;
         for (int i = 0; i < rcnt; ++i)
         {
-            BUILD_ASSERT(sizeof(pack->data.ansaddrs.addrs[i]) == sizeof(katDevices[i].a), "Size of BT address should match");
-            memcpy(&pack->data.ansaddrs.addrs[i], &katDevices[i].a, sizeof(katDevices[i].a));
+            BUILD_ASSERT(sizeof(pack->data.ansaddrs.addrs[i]) == sizeof(KatBleDevices[i].a), "Size of BT address should match");
+            memcpy(&pack->data.ansaddrs.addrs[i], &KatBleDevices[i].a, sizeof(KatBleDevices[i].a));
         }
         return true;
 
     case cWritePairing:
-        const int wcnt = MIN(ARRAY_SIZE(katDevices), pack->data.ansaddrs.count);
-        numKatDevices = wcnt;
+        const int wcnt = MIN(ARRAY_SIZE(KatBleDevices), pack->data.ansaddrs.count);
+        NumKatBleDevices = wcnt;
         for (int i = 0; i < wcnt; ++i)
         {
-            BUILD_ASSERT(sizeof(pack->data.ansaddrs.addrs[i]) == sizeof(katDevices[i].a), "Size of BT address should match");
-            memcpy(&katDevices[i].a, &pack->data.ansaddrs.addrs[i], sizeof(katDevices[i].a));
+            BUILD_ASSERT(sizeof(pack->data.ansaddrs.addrs[i]) == sizeof(KatBleDevices[i].a), "Size of BT address should match");
+            memcpy(&KatBleDevices[i].a, &pack->data.ansaddrs.addrs[i], sizeof(KatBleDevices[i].a));
         }
-        reset_bt_filter();
-        async_save_settings();
+        kat_ble_update_devices();
+        kat_settings_async_save();
         return false;
 
     case cDeepSleep:
@@ -201,14 +205,16 @@ bool handle_kat_usb(uint8_t *buf, int size)
         // Speed-up connection, by forcing last known status packets first
         for (int i = 1; i < _KAT_MAX_DEVICE; ++i)
         {
-            if (devices[i].deviceStatus.firmwareVersion > 0)
-                devices[i].deviceStatus.freshStatus = true;
+            if (KatDeviceInfo[i].deviceStatus.firmwareVersion > 0)
+                KatDeviceInfo[i].deviceStatus.freshStatus = true;
         }
-        usb_stream_enabled = true;
-        return false; // Don't force answer here, as we answer from different buffers.
+        kat_ble_enable_connections();
+        kat_usb_enable_stream();
+        return false; // Don't force answer here, we'll send packets from different buffers.
 
     case cStopRead:
-        usb_stream_enabled = false;
+        kat_usb_disable_stream();
+        kat_ble_disable_connections();
         return false;
 
     case cCloseVibration:
@@ -228,7 +234,7 @@ bool handle_kat_usb(uint8_t *buf, int size)
     }
 }
 
-void initKatUsb(void)
+void kat_usb_init_buffers(void)
 {
     for (int i = 0; i < ARRAY_SIZE(usb_update_buf); ++i)
     {
@@ -253,7 +259,7 @@ void initKatUsb(void)
     }
 }
 
-uint8_t *encodeKatUsbStatus(tKatDevice devId, tKatDeviceInfo *katDevice)
+static uint8_t *kat_usb_encode_status(eKatDevice devId, sKatDeviceInfo *katDevice)
 {
     int dev = (int)devId - 1;
     tKatUsbPacket *b = (tKatUsbPacket *)usb_update_buf[dev][KAT_USB_BUF_CONF];
@@ -263,7 +269,7 @@ uint8_t *encodeKatUsbStatus(tKatDevice devId, tKatDeviceInfo *katDevice)
     return b->raw;
 }
 
-uint8_t *encodeKatUsbData(tKatDevice devId, tKatDeviceInfo *katDevice)
+static uint8_t *kat_usb_encode_data(eKatDevice devId, sKatDeviceInfo *katDevice)
 {
     int dev = (int)devId - 1;
     tKatUsbPacket *b = (tKatUsbPacket *)usb_update_buf[dev][KAT_USB_BUF_DATA];
@@ -287,6 +293,39 @@ uint8_t *encodeKatUsbData(tKatDevice devId, tKatDeviceInfo *katDevice)
         [[fallthrough]];
     case KAT_NONE:
         return NULL;
+    }
+    return NULL;
+}
+
+uint8_t* kat_usb_get_update_packet(void)
+{
+    // Try send status first
+    for (int i = 0; i < NumKatBleDevices; ++i)
+    {
+        eKatDevice devId = (eKatDevice)i + 1;
+        if (KatDeviceInfo[devId].deviceStatus.freshStatus)
+        {
+            uint8_t *buf = kat_usb_encode_status(devId, &KatDeviceInfo[devId]);
+            if (buf)
+            {
+                KatDeviceInfo[devId].deviceStatus.freshStatus = false;
+                return buf;
+            }
+        }
+    }
+    // If there is no fresh status updates -- send data update
+    for (int i = 0; i < NumKatBleDevices; ++i)
+    {
+        eKatDevice devId = (eKatDevice)i + 1;
+        if (KatDeviceInfo[devId].deviceStatus.freshData)
+        {
+            uint8_t *buf = kat_usb_encode_data(devId, &KatDeviceInfo[devId]);
+            if (buf)
+            {
+                KatDeviceInfo[devId].deviceStatus.freshData = false;
+                return buf;
+            }
+        }
     }
     return NULL;
 }

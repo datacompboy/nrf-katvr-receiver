@@ -2,6 +2,10 @@ source "Kconfig.zephyr"
 
 # Project-specific settings
 
+config APP_DEBUG
+    bool "Should we build application in debug mode (with extra logging, tracking and usb-serial console)"
+    default n
+
 config APP_WAIT_FOR_OBSERVER
     bool "If yes, application will wait for terminal connection to console before start"
     default y
@@ -13,3 +17,7 @@ config APP_PACKET_LOG
 config APP_ACCEPT_UNPAIRED_SENSORS
     bool "Should we keep reading sensors that wasn't 'paired' by gateway or not"
     default n
+
+config APP_KEEP_CONNECTIONS
+    bool "Should we keep connections all the time, or follow commands from gateway."
+    default y
