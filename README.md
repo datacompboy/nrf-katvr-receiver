@@ -80,6 +80,8 @@ This app aims to implement bluetooth receiver compatible with KatVR's C2/C2+ tre
   - Devices
     - Expose "Kat Seat Receiver" HID device
     - Let to choose mimic C2/C2+ or C2Core receivers
+  - USB Host / BT Hid
+    - Create child device to control vibration/LED wirelessy
 - BT Peripheral mode (doesn't seems like worth it)
   - Export connected sensors MACs over BLE in R/W mode
   - Export sensors data over BLE in standard way
