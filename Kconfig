@@ -20,4 +20,4 @@ config APP_ACCEPT_UNPAIRED_SENSORS
 
 config APP_KEEP_CONNECTIONS
     bool "Should we keep connections all the time, or follow commands from gateway."
-    default y
+    default n

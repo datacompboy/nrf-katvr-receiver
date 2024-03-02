@@ -2,12 +2,46 @@
 $katPath = "C:\Program Files (x86)\KAT Gateway\"
 
 # Load Gateway's communication helper library
-
 if (!(Test-Path $katPath -PathType Container)) {
     throw  "KAT Gateway expected to be installed in '${katPath}'"
 }
 
 Add-Type -Path "C:\Program Files (x86)\KAT Gateway\IBizLibrary.dll"
+
+#
+# Detect known Receiver version
+#
+[IBizLibrary.ComUtility]::KatDevice='walk_c2'
+if (Test-Path([IBizLibrary.ComUtility]::Device_Config_File_Walk_C2_Path)) {
+    Write-Host "Gateway with configuration for Kat Walk C2/C2+ detected."
+} else {
+    [IBizLibrary.ComUtility]::KatDevice='walk_c2_core'
+    if (Test-Path([IBizLibrary.ComUtility]::Device_Config_File_Walk_C2_Path)) {
+        Write-Host "Gateway with configuration for Kat Walk C2 Core detected."
+    } else {
+        throw "Not found gateway configuration for neither Kat Walk C2/C2+ nor C2 Core."
+    }
+}
+[IBizLibrary.Configs].GetMethod('C2ReceiverPairingInfoRead').invoke($null, $null)
+if ($null -eq [IBizLibrary.KATSDKInterfaceHelper]::receiverPairingInfoSave.ReceiverSN) {
+    throw "Gateway configuration for the treadmill is not found."
+}
+
+#
+# Check is the ready to flash dongle connected
+#
+if (Get-Volume -FileSystemLabel "XIAO-SENSE" -ErrorAction SilentlyContinue)
+{
+    $dest = (Get-Volume -FileSystemLabel "XIAO-SENSE").DriveLetter + ":\"
+    $firmware = 'nrf_receiver_'+([IBizLibrary.ComUtility]::KatDevice)+'.uf2'
+    if (Test-Path($firmware)) {
+        Write-Host "Uploading firmware $firmware..."
+        Copy-Item $firmware $dest
+        Start-Sleep -Seconds 5
+    } else {
+        throw "Please flash dongle with receiver firmware."
+    }
+}
 
 #
 # Check the connected device.
@@ -22,8 +56,11 @@ if ([IBizLibrary.KATSDKInterfaceHelper]::deviceCount -gt 1) {
     throw "Please connect only the receiver USB dongle without the original treadmill cable."
 }
 
-if ([IBizLibrary.KATSDKInterfaceHelper]::walk_c2_Count -ne 1) {
-    throw "Only KatWalkC2/C2+ is supported, please flash correct firmware."
+if ([IBizLibrary.KATSDKInterfaceHelper]::walk_c2_Count -eq 1 -and [IBizLibrary.ComUtility]::KatDevice -ne 'walk_c2') {
+    throw "The dongle flashed for Kat Walk C2/C2+, but gateway configuration is not."
+}
+if ([IBizLibrary.KATSDKInterfaceHelper]::walk_c2_core_Count -eq 1 -and [IBizLibrary.ComUtility]::KatDevice -ne 'walk_c2_core') {
+    throw "The dongle flashed for Kat Walk C2 Core, but gateway configuration is not."
 }
 
 $dev = New-Object IBizLibrary.KATSDKInterfaceHelper+KATModels
@@ -36,9 +73,6 @@ if ($dev.device -ne "nRF KAT-VR Receiver") {
 #
 # Now we know that the right dongle is connected, let's duplicate orignial treadmill settings.
 #
-
-[IBizLibrary.ComUtility]::KatDevice='walk_c2'
-[IBizLibrary.Configs].GetMethod('C2ReceiverPairingInfoRead').invoke($null, $null)
 
 # Write the new SN
 $newSn = [IBizLibrary.KATSDKInterfaceHelper]::receiverPairingInfoSave.ReceiverSN
