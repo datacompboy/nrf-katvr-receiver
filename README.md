@@ -13,7 +13,7 @@ Project address: https://github.com/datacompboy/nrf-katvr-receiver/
 - Download binary release package
 - Unpack
 - Attach your Seeed Studio XIAO nRF52840 dongle to usb port and double-press the reset button (left from usb port)
-- Double-click "clone-kat-device.ps1" script to install firmware and write pairing with your sensors.
+- Double-click "`install.cmd`" script to install firmware and write pairing with your sensors.
 - Enjoy!
 
 ## Features

@@ -29,7 +29,8 @@ mkdir -Path $bindir
 Copy-Item "$builddir/c2/zephyr/zephyr.uf2" "$bindir/nrf_receiver_walk_c2.uf2"
 Copy-Item "$builddir/c2core/zephyr/zephyr.uf2" "$bindir/nrf_receiver_walk_c2_core.uf2"
 Copy-Item "$dir/scripts/clone-kat-device.ps1" "$bindir/"
-Copy-Item "$dir/README.md" "$bindir/"
+Copy-Item "$dir/scripts/install.cmd" "$bindir/"
+Copy-Item "$dir/README.md" "$bindir/README.txt"
 Compress-Archive -Path $bindir -DestinationPath "${bindir}.zip"
 
 Remove-Item -Recurse "$builddir"
