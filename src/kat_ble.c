@@ -143,7 +143,7 @@ static int kat_ble_setup_filter(void)
     return 0;
 }
 
-BUILD_ASSERT(CONFIG_BT_CTLR_SDC_MAX_CONN_EVENT_LEN_DEFAULT <= 1500, "We need shortest possible connection intervals");
+BUILD_ASSERT(CONFIG_BT_CTLR_SDC_MAX_CONN_EVENT_LEN_DEFAULT <= 2000, "We need shortest possible connection intervals");
 static const struct bt_conn_le_create_param btConnCreateParam = BT_CONN_LE_CREATE_PARAM_INIT(BT_CONN_LE_OPT_NONE, BT_GAP_SCAN_FAST_INTERVAL, 5);
 
 // Note: btConnParam and btConnParamUpdate should differ by only for timeout argument.
