@@ -12,7 +12,10 @@ Project address: https://github.com/datacompboy/nrf-katvr-receiver/
 
 - Download binary release package
 - Unpack
-- Attach your Seeed Studio XIAO nRF52840 dongle to usb port and double-press the reset button (left from usb port)
+- Exit from the KAT Gateway
+- Disconnect your KAT Walk USB cable
+- Attach your Seeed Studio XIAO nRF52840 dongle to usb port and double-press the reset button (left from usb port),
+  so that new drive explorer window pops up.
 - Double-click "`install.cmd`" script to install firmware and write pairing with your sensors.
 - Enjoy!
 

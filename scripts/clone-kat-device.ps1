@@ -6,6 +6,10 @@ if (!(Test-Path $katPath -PathType Container)) {
     throw  "KAT Gateway expected to be installed in '${katPath}'"
 }
 
+if (Get-Process -name "KAT Gateway" -ErrorAction SilentlyContinue) {
+    throw "Please stop KAT Gateway."
+}
+
 Add-Type -Path "C:\Program Files (x86)\KAT Gateway\IBizLibrary.dll"
 
 #
