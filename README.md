@@ -2,6 +2,8 @@
 
 This app aims to implement bluetooth receiver compatible with KatVR's C2/C2+ treadmill sensors.
 
+Project address: https://github.com/datacompboy/nrf-katvr-receiver/
+
 ## Tested on
 
 - Seeed Studio XIAO nRF52840
