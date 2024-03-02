@@ -9,6 +9,7 @@ config APP_DEBUG
 config APP_WAIT_FOR_OBSERVER
     bool "If yes, application will wait for terminal connection to console before start"
     default y
+    depends on APP_DEBUG
 
 config APP_PACKET_LOG
     bool "Should we spam all packets captured to the log or not"
@@ -21,3 +22,32 @@ config APP_ACCEPT_UNPAIRED_SENSORS
 config APP_KEEP_CONNECTIONS
     bool "Should we keep connections all the time, or follow commands from gateway."
     default n
+
+# Overrides for deafults to manage debugging with single APP_DEBUG
+config LOG
+    default APP_DEBUG
+    depends on APP_DEBUG
+config LOG_PRINTK
+    default APP_DEBUG
+    depends on APP_DEBUG
+config LOG_MODE_IMMEDIATE
+    depends on APP_DEBUG
+config SERIAL
+    default APP_DEBUG
+    depends on APP_DEBUG
+config CONSOLE
+    bool
+    default APP_DEBUG
+    depends on APP_DEBUG
+config UART_CONSOLE
+    default APP_DEBUG
+    depends on APP_DEBUG
+config UART_LINE_CTRL
+    default APP_DEBUG
+    depends on APP_DEBUG
+config USB_CDC_ACM
+    default APP_DEBUG
+    depends on APP_DEBUG
+config USB_DEVICE_INITIALIZE_AT_BOOT
+    default n
+    depends on APP_DEBUG

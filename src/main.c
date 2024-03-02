@@ -150,10 +150,17 @@ BUILD_ASSERT(ARRAY_SIZE(KatBleDevices) < _KAT_MAX_DEVICE, "We can keep only that
 
 int main(void)
 {
-    // Start USB subsystem first, as it also the one that provides console (in debug build).
-    kat_usb_init();
+    if (IS_ENABLED(CONFIG_APP_DEBUG))
+    {
+        // Start USB subsystem first, as it also the one that provides console (in debug build).
+        kat_usb_init();
+        kat_settings_init();
+    } else {
+        // In release mode, enable USB after settings load to ensure device serial announced from the beginning
+        kat_settings_init();
+        kat_usb_init();
+    }
     printk("*** nRF KAT Receiver ***\n");
-    kat_settings_init();
     kat_ble_init();
     return 0;
 }

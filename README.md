@@ -2,6 +2,18 @@
 
 This app aims to implement bluetooth receiver compatible with KatVR's C2/C2+ treadmill sensors.
 
+## Tested on
+
+- Seeed Studio XIAO nRF52840
+
+## Installation on Seeed Stdio XIAO nRF52840 dongle
+
+- Download binary release package
+- Unpack
+- Attach your Seeed Studio XIAO nRF52840 dongle to usb port and double-press the reset button (left from usb port)
+- Double-click "clone-kat-device.ps1" script to install firmware and write pairing with your sensors.
+- Enjoy!
+
 ## Features
 
 - KatVR Sensors BT protocol
@@ -26,11 +38,6 @@ This app aims to implement bluetooth receiver compatible with KatVR's C2/C2+ tre
   - Device can be used as separate receiver, by following standard pairing procedure
   - Device can clone settings from existing KAT receiver using provided `clone-kat-device.ps1` powershell script.
 
-## Tested on
-
-- (main) Seeed Studio XIAO nRF52840
-- nRF52840 Dongle
-
 ## How to build
 
 - Prerequisites
@@ -47,6 +54,12 @@ This app aims to implement bluetooth receiver compatible with KatVR's C2/C2+ tre
   - Go to `Applications` pane
   - Click `Create new build configuration`
   - Choose your dongle type from dropdown, the rest can be left as is
+    - If you wish to enable debuggign (Enables USB console and logging), add an extra CMake option:
+
+      ```shell
+      -DOVERLAY_CONFIG=prj_debug.conf
+      ```
+
   - Now use "Build" action from `Actions` pane under the chosen build.
 - Flashing to the dongle:
   - First, find the output directory

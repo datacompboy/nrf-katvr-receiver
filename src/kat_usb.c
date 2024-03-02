@@ -171,8 +171,6 @@ int kat_usb_init(void)
 {
     int err;
 
-    const struct device *const dev = DEVICE_DT_GET(DT_CHOSEN(zephyr_console));
-
     kat_usb_init_buffers();
 
     usb_hid_dev = device_get_binding("HID_0");
@@ -198,6 +196,8 @@ int kat_usb_init(void)
 
     if (IS_ENABLED(CONFIG_APP_WAIT_FOR_OBSERVER))
     {
+        const struct device *const dev = DEVICE_DT_GET(DT_CHOSEN(zephyr_console));
+
         /* Poll if the DTR flag was set */
         uint32_t dtr = 0;
         while (!dtr)
