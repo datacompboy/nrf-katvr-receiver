@@ -52,11 +52,13 @@ if (Get-Volume -FileSystemLabel "XIAO-SENSE" -ErrorAction SilentlyContinue)
 #
 [IBizLibrary.KATSDKInterfaceHelper].GetMethod('GetDeviceConnectionStatus').invoke($null, $null)
 
-if ([IBizLibrary.KATSDKInterfaceHelper]::deviceCount -lt 1) {
+$platforms = [IBizLibrary.KATSDKInterfaceHelper]::walk_c2_Count + [IBizLibrary.KATSDKInterfaceHelper]::walk_c2_core_Count
+
+if ($platforms -lt 1) {
     throw "Please connect the receiver USB dongle."
 }
 
-if ([IBizLibrary.KATSDKInterfaceHelper]::deviceCount -gt 1) {
+if ($platforms -gt 1) {
     throw "Please connect only the receiver USB dongle without the original treadmill cable."
 }
 
@@ -68,7 +70,12 @@ if ([IBizLibrary.KATSDKInterfaceHelper]::walk_c2_core_Count -eq 1 -and [IBizLibr
 }
 
 $dev = New-Object IBizLibrary.KATSDKInterfaceHelper+KATModels
-[IBizLibrary.KATSDKInterfaceHelper]::GetDevicesDesc([ref]$dev, 0)
+for($devNo=0; $devNo -lt [IBizLibrary.KATSDKInterfaceHelper]::deviceCount; $devNo ++) {
+    [IBizLibrary.KATSDKInterfaceHelper]::GetDevicesDesc([ref]$dev, $devNo)
+    if ($dev.deviceType -eq 1) {
+        break;
+    }
+}
 
 if ($dev.device -ne "nRF KAT-VR Receiver") {
     throw "Please connect 'nRF KAT-VR Receiver' dongle, not the original treadmill."
@@ -86,7 +93,7 @@ $newSn = [IBizLibrary.KATSDKInterfaceHelper]::receiverPairingInfoSave.ReceiverSN
 [IBizLibrary.KATSDKInterfaceHelper]::SendHIDCommand($dev.serialNumber, $command, 32, $ans, 32)
 
 # Refresh device settings
-[IBizLibrary.KATSDKInterfaceHelper]::GetDevicesDesc([ref]$dev, 0)
+[IBizLibrary.KATSDKInterfaceHelper]::GetDevicesDesc([ref]$dev, $devNo)
 if ($dev.serialNumber -ne $newSn) {
     throw "Something went off. Please try again."
 }
