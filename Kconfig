@@ -20,8 +20,51 @@ config APP_ACCEPT_UNPAIRED_SENSORS
     default n
 
 config APP_KEEP_CONNECTIONS
-    bool "Should we keep connections all the time, or follow commands from gateway."
+    bool "Should we keep connection from the sensors for extra minute, or disconnect immediately as gateway ask for."
     default n
+
+config APP_DEBUG_BOOT_CONNECTIONS
+    bool "Should we connect at the device boot time or wait until gateway ask for it."
+    default APP_KEEP_CONNECTIONS
+
+choice
+    prompt "Frequency of KAT Sensors refreshment"
+    default APP_KAT_FREQ_100
+
+config APP_KAT_FREQ_133
+    bool "Use 133Hz refresh rate (unstable)"
+
+config APP_KAT_FREQ_114
+    bool "Use 114Hz refresh rate (unstable)"
+
+config APP_KAT_FREQ_100
+    bool "Use 100Hz refresh rate"
+
+config APP_KAT_FREQ_80
+    bool "Use 80Hz refresh rate"
+
+config APP_KAT_FREQ_67
+    bool "Use 67Hz refresh rate"
+
+config APP_KAT_FREQ_57
+    bool "Use 57Hz refresh rate"
+
+config APP_KAT_FREQ_50
+    bool "Use 50Hz refresh rate"
+
+endchoice
+
+# The connection interval defines maximum refresh speed per sensor,
+# with at least 2 intervals required for each sensor to update.
+config APP_KAT_CONN_INTERVAL
+    int
+    default 6 if APP_KAT_FREQ_133
+    default 7 if APP_KAT_FREQ_114
+    default 8 if APP_KAT_FREQ_100
+    default 10 if APP_KAT_FREQ_80
+    default 12 if APP_KAT_FREQ_67
+    default 14 if APP_KAT_FREQ_57
+    default 16 if APP_KAT_FREQ_50
 
 # Overrides for deafults to manage debugging with single APP_DEBUG
 config LOG

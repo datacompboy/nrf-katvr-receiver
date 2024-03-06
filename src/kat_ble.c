@@ -27,7 +27,7 @@ BUILD_ASSERT(ARRAY_SIZE(KatDeviceName) == _KAT_MAX_DEVICE + 1, "Don't miss a thi
 static eKatDevice KatBleConnectionDevice[CONFIG_BT_MAX_CONN] = {KAT_NONE};
 static atomic_t NumKatBleConnections = ATOMIC_INIT(0);
 static atomic_t KatBleBits = ATOMIC_INIT(0);
-enum { bitBleActive };
+enum { bitBleActive, bitBleEnabled };
 
 #ifdef CONFIG_SETTINGS
 bt_addr_le_t KatBleDevices[_KAT_MAX_DEVICE-1] = {};
@@ -109,9 +109,18 @@ static void kat_ble_disconnect(void)
     bt_conn_foreach(BT_CONN_TYPE_LE, kat_ble_do_disconnect, NULL);
 }
 
-ASYNC_FUNC(kat_ble_async_disconnect, K_MSEC(100))
+#ifdef CONFIG_APP_KEEP_CONNECTIONS
+#define _disconnect_delay K_SECONDS(30)
+#else
+#define _disconnect_delay K_MSEC(100)
+#endif
+ASYNC_FUNC(kat_ble_async_disconnect, _disconnect_delay)
 {
-    kat_ble_disconnect();
+    // If we weren't re-enabled in meanwhile -- trigger disconnect.
+    if (! atomic_test_bit(&KatBleBits, bitBleEnabled)) {
+        atomic_clear_bit(&KatBleBits, bitBleActive);
+        kat_ble_disconnect();
+    }
 }
 
 static int kat_ble_setup_filter(void)
@@ -144,12 +153,12 @@ static int kat_ble_setup_filter(void)
 }
 
 BUILD_ASSERT(CONFIG_BT_CTLR_SDC_MAX_CONN_EVENT_LEN_DEFAULT <= 2000, "We need shortest possible connection intervals");
-static const struct bt_conn_le_create_param btConnCreateParam = BT_CONN_LE_CREATE_PARAM_INIT(BT_CONN_LE_OPT_NONE, BT_GAP_SCAN_FAST_INTERVAL, 5);
+static const struct bt_conn_le_create_param btConnCreateParam = BT_CONN_LE_CREATE_PARAM_INIT(BT_CONN_LE_OPT_NONE, BT_GAP_SCAN_FAST_INTERVAL, 0x10);
 
 // Note: btConnParam and btConnParamUpdate should differ by only for timeout argument.
-#define KAT_BT_CONN_PARAM(timeout) BT_LE_CONN_PARAM_INIT(6, 6, 0, timeout)
-static const struct bt_le_conn_param btConnParam = KAT_BT_CONN_PARAM(2000);
-static const struct bt_le_conn_param btConnParamUpdate = KAT_BT_CONN_PARAM(500);
+#define KAT_BT_CONN_PARAM(timeout) BT_LE_CONN_PARAM_INIT(CONFIG_APP_KAT_CONN_INTERVAL, CONFIG_APP_KAT_CONN_INTERVAL, 5, timeout)
+static const struct bt_le_conn_param btConnParam = KAT_BT_CONN_PARAM(500);
+static const struct bt_le_conn_param btConnParamUpdate = KAT_BT_CONN_PARAM(100);
 
 ASYNC_FUNC(kat_ble_connect_next, K_MSEC(100))
 {
@@ -173,7 +182,7 @@ ASYNC_FUNC(kat_ble_update_devices, K_MSEC(100))
 {
     kat_ble_disconnect();
     kat_ble_setup_filter();
-    if (IS_ENABLED(CONFIG_APP_KEEP_CONNECTIONS)) {
+    if (IS_ENABLED(CONFIG_APP_DEBUG_BOOT_CONNECTIONS)) {
         kat_ble_connect_next();
     }
 }
@@ -344,16 +353,18 @@ BT_L2CAP_CHANNEL_DEFINE(a_att_fixed_chan, BT_L2CAP_CID_ATT, kat_ble_att_accept_c
 
 void kat_ble_enable_connections(void)
 {
+    atomic_set_bit(&KatBleBits, bitBleEnabled);
     atomic_set_bit(&KatBleBits, bitBleActive);
     kat_ble_connect_next();
+    // Stop disconnection timer if it was active
+    // (note: that will run it's function, but due to set bitBleEnabled it'll be noop)
+    k_timer_stop(&_timer_kat_ble_async_disconnect);
 }
 
 void kat_ble_disable_connections(void)
 {
-    if (!IS_ENABLED(CONFIG_APP_KEEP_CONNECTIONS)) {
-        atomic_clear_bit(&KatBleBits, bitBleActive);
-        kat_ble_async_disconnect();
-    }
+    atomic_clear_bit(&KatBleBits, bitBleEnabled);
+    kat_ble_async_disconnect();
 }
 
 void kat_ble_get_localaddr(uint8_t* output, size_t bufsize)
@@ -374,7 +385,7 @@ void kat_ble_init(void)
     }
     printk("Bluetooth initialized\n");
     kat_ble_setup_filter();
-    if (IS_ENABLED(CONFIG_APP_KEEP_CONNECTIONS)) {
+    if (IS_ENABLED(CONFIG_APP_DEBUG_BOOT_CONNECTIONS)) {
         kat_ble_enable_connections();
     }
 }
