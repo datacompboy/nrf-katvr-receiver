@@ -4,6 +4,12 @@ This app aims to implement bluetooth receiver compatible with KatVR's C2/C2+ tre
 
 Project address: https://github.com/datacompboy/nrf-katvr-receiver/
 
+Read article about it at:
+
+* LinkedIn: https://www.linkedin.com/pulse/katwalk-c2-p3-cutting-wire-anton-fedorov-4abae/
+* Medium: https://medium.com/@datacompboy/katwalk-c2-p-3-cutting-the-wire-987753f49da8?source=friends_link&sk=a4e0e2d3f71be681bc206b1d9a3d307a
+* Habr: https://habr.com/ru/articles/802125/
+
 ## Tested on
 
 - Seeed Studio XIAO nRF52840
