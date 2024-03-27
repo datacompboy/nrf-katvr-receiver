@@ -1,6 +1,6 @@
 # Convert output of "fc.exe /L /N file1.txt file2.txt" into script that will patch file1.txt to became file2.txt.
 # Usage:
-#   fc.exe /L /N file1.txt file2.txt | fc-text-to-patcher.ps1 > patch-file1.ps1
+#   fc.exe /L /N file1.txt file2.txt | fc-text-to-patcher.ps1 | Out-File -FilePath patch-file1.ps1 -Encoding ascii
 # Patch file usage:
 #   cat .\file1.hex | .\patch-file1.ps1 | Out-File -FilePath file2.txt -Encoding ascii
 #

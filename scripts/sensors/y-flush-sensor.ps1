@@ -1,7 +1,8 @@
 param (
     [string]$patch = "",
+    [string]$orig = "zzz",
     [int]$dvid = 0xC4F4,
-    [int]$dpid = 28471,
+    [int]$dpid = -1,
     [int]$type = 3,
     [int]$index = 0
 )
@@ -20,15 +21,16 @@ if (Get-Process -name "KAT Gateway" -ErrorAction SilentlyContinue) {
 
 Add-Type -Path "C:\Program Files (x86)\KAT Gateway\KAT_WalkC2_Dx.dll"
 
-$firmware = $katPath + "katvr_foot.hex"
+$firmware = $katPath + "katvr_" + $orig + ".hex"
 
 if (!(Test-Path $katPath)) {
-    throw "Feet sensor firmware is not found at '$firmware'"
+    throw "Original sensor firmware is not found at '$firmware'"
 }
 
 if ($patch -ne "") {
-    $newfw = $ENV:TEMP + "\katvr_foot_patch.hex"
-    if (Get-Content $firmware | & $patch | Out-File -FilePath $newfw -Encoding ascii) {
+    $newfw = $ENV:TEMP + "\katvr_" + $orig + "_patch.hex"
+    $patchscript = ".\z_patch_" + $patch + ".ps1"
+    if (Get-Content $firmware | & $patchscript | Out-File -FilePath $newfw -Encoding ascii) {
         throw "Failed to patch the firmware file."
     }
     $firmware = $newfw
@@ -54,4 +56,4 @@ if ([KAT_WalkC2_Dx.KatvrFirmwareHelper]::flash($firmware, $type, 0) -ne 1) {
 [KAT_WalkC2_Dx.KatvrFirmwareHelper]::ch9326_ClearThreadData()
 [KAT_WalkC2_Dx.KatvrFirmwareHelper]::close_ch9326()
 Start-Sleep 1
-.\restore-sensor-config.ps1
+.\y-upload-sensor-config.ps1

@@ -38,15 +38,21 @@ for($devNo=0; $devNo -lt [IBizLibrary.KATSDKInterfaceHelper]::deviceCount; $devN
     if ($dev.deviceType -eq 0 -and $dev.device -match "walk c2 foot") {
         break;
     }
+    if ($dev.deviceType -eq 0 -and $dev.device -match "walk c2 direction") {
+        break;
+    }
 }
 
-if (-not($dev.device -match "walk c2 foot")) {
-    throw "Please connect foot sensor."
+if (-not($dev.device -match "walk c2 foot" -or $dev.device -match "walk c2 direction")) {
+    throw "Please connect foot or direction sensor."
 }
 
 $id = -1
 [IBizLibrary.KATSDKInterfaceHelper]::ReadDeviceId($dev.serialNumber, [ref]$id)
-if ($id -eq 2) {
+if ($id -eq 1) {
+    Write-Warning "Sensor is already configured to be direction sensor"
+}
+elseif ($id -eq 2) {
     Write-Warning "Sensor is already configured to be left sensor"
 }
 elseif ($id -eq 3) {
@@ -58,9 +64,15 @@ elseif ($id -ne 0) {
 
 $sensor = New-Object IBizLibrary.KATSDKInterfaceHelper+sensorInformation
 [IBizLibrary.KATSDKInterfaceHelper]::GetSensorInformation([ref]$sensor, $dev.serialNumber)
+$dirmac = [IBizLibrary.KATSDKInterfaceHelper]::receiverPairingInfoSave.ReceiverPairingByte[1..6]
 $leftmac = [IBizLibrary.KATSDKInterfaceHelper]::receiverPairingInfoSave.ReceiverPairingByte[7..12]
 $rightmac = [IBizLibrary.KATSDKInterfaceHelper]::receiverPairingInfoSave.ReceiverPairingByte[13..19]
-if(-not(Compare-Object $leftmac $sensor.mac)) {
+
+if(-not(Compare-Object $dirmac $sensor.mac)) {
+    [IBizLibrary.KATSDKInterfaceHelper]::WriteDeviceId($dev.serialNumber, 1)
+    Write-Host "Made the sensor to be Direction"
+}
+elseif(-not(Compare-Object $leftmac $sensor.mac)) {
     [IBizLibrary.KATSDKInterfaceHelper]::WriteDeviceId($dev.serialNumber, 2)
     Write-Host "Made the sensor to be Left Foot"
 }
