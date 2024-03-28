@@ -2,6 +2,27 @@ $in_line = 0
 $Input | ForEach-Object {
   $in_line++
   $skip = 0
+  if ($in_line -eq   112) {
+    if ($_ -ne ':200DDC002846267966B9B4F89410814215DCA582092029462A460BF0D9FEBFE00C120020E9') { throw 'File content mismatch'; }
+    $skip = 1
+  }
+  if ($in_line -eq   113) {
+    if ($_ -ne ':200DFC00B4F8921081420CDD13984078022803DA1398C078022800DBA58261484FF47A718D') { throw 'File content mismatch'; }
+    $skip = 1
+  }
+  if ($in_line -eq   114) {
+    if ($_ -ne ':200E1C004AE61098A071A9E0804F120084150020EC2F00200FF03DF805200090159AE06A8D') { throw 'File content mismatch'; }
+    $skip = 1
+  }
+  if ($in_line -eq   114) {
+    Write-Output ':200DDC002846267966B9B4F89410814215DCA582092029462A460BF0D9FEBFE00C120020E9'
+  }
+  if ($in_line -eq   114) {
+    Write-Output ':200DFC00B4F89210814200BF13984078022803DA1398C078022800DBA58261484FF47A71B7'
+  }
+  if ($in_line -eq   114) {
+    Write-Output ':200E1C004AE61098A071A9E0804F120084150020EC2F00200FF03DF805200090159AE06A8D'
+  }
   if ($in_line -eq   933) {
     if ($_ -ne ':206AF00010201E46FFF77EF8C0B218B130461B21FAF762FAE08A401C80B2B0F5FA7F18BF5F') { throw 'File content mismatch'; }
     $skip = 1
