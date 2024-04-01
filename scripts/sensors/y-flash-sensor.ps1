@@ -34,9 +34,12 @@ if ($patch -ne "") {
         throw "Failed to patch the firmware file."
     }
     $firmware = $newfw
+    Write-Host "Flashing the PATCH for " + $orig
+} else {
+    Write-Host "Restoring the ORIGINAL firmware for " + $orig
 }
 
-Write-Host "Want to flash $firmware"
+Write-Host "Using file $firmware"
 
 if ([KAT_WalkC2_Dx.KatvrFirmwareHelper]::ch9326_find() -eq 0) {
     throw "ch9326_find failed"
