@@ -1,4 +1,4 @@
-# nRF-based KatVR C2/C2+ Receiver
+# nRF-based KatVR C2/C2+ Receiver -- 133 Hz version
 
 This app aims to implement bluetooth receiver compatible with KatVR's C2/C2+ treadmill sensors.
 
@@ -14,6 +14,12 @@ Read article about it at [Medium] or [LinkedIn] or [Habr].
 
 - Seeed Studio XIAO nRF52840
 
+## READ ME!
+
+This is a version of the receiver that is designed to work at 133Hz with the sensors.
+
+**While this leads to lower latencies, it requires to use a fixed firmware for all sensors you use.**
+
 ## Installation on Seeed Stdio XIAO nRF52840 dongle
 
 - Download binary release package
@@ -23,7 +29,21 @@ Read article about it at [Medium] or [LinkedIn] or [Habr].
 - Attach your Seeed Studio XIAO nRF52840 dongle to usb port and double-press the reset button (left from usb port),
   so that new drive explorer window pops up.
 - Double-click "`install.cmd`" script to install firmware and write pairing with your sensors.
-- Enjoy!
+- The get stable connection, please update sensors firmware!
+
+To update a sensor firmware:
+
+- Take the sensor out of a shoe or a backplate
+- Connect it to the PC
+- Press with a toothpick button inside of a "Firmware update" hole
+- Click with another toothpick the "Reset" button
+- Release the "Firmware update" button
+- From "Sensors" folder run "update-feet-firmware.cmd" or "update-direction-firmware.cmd"
+
+If you want to restore sensor firmware back to stock: do the same, but run "restore-*" script.
+
+You need an updated firmware to enjoy lower latencies with this receiver, but the use of fixed firmware with the official
+receiver will lead to very-very fast movement in games... I'm working on a better solution.
 
 ## Features
 
