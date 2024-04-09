@@ -61,9 +61,9 @@ for($devNo=0; $devNo -lt [IBizLibrary.KATSDKInterfaceHelper]::deviceCount; $devN
     }
 }
 
-if ($dev.device -ne "nRF KAT-VR Receiver") {
-    throw "Please connect 'nRF KAT-VR Receiver' dongle, not the original treadmill ("+$dev.device+")"
-}
+#if ($dev.device -ne "nRF KAT-VR Receiver") {
+#    throw "Please connect 'nRF KAT-VR Receiver' dongle, not the original treadmill ("+$dev.device+")"
+#}
 
 #
 #
