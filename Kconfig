@@ -27,6 +27,10 @@ config APP_DEBUG_BOOT_CONNECTIONS
     bool "Should we connect at the device boot time or wait until gateway ask for it."
     default APP_KEEP_CONNECTIONS
 
+config APP_FEET_ROTATION
+    bool "Support rotation for the feet sensors to a configured angle"
+    default y
+
 choice
     prompt "Frequency of KAT Sensors refreshment"
     default APP_KAT_FREQ_100

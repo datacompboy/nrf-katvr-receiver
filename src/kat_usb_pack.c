@@ -3,6 +3,8 @@
 
 #include <zephyr/kernel.h>
 
+#include <math.h>
+
 #include "kat_main.h"
 #include "kat_ble.h"
 #include "kat_usb.h"
@@ -69,13 +71,22 @@ typedef __PACKED_UNION
                 uint8_t status1;
                 uint8_t status2;
                 uint8_t __undef1[10];
-                uint16_t speed_x;
-                uint16_t speed_y;
+                int16_t speed_x;
+                int16_t speed_y;
                 uint8_t __zero;
                 uint8_t color;
                 // 5 unused bytes
             }
             ansfoot;
+            __PACKED_STRUCT
+            {
+                uint8_t nrfSettingId;
+                __PACKED_STRUCT
+                {
+                    float left, right;
+                } footCorrection;
+            }
+            ansnrfsetting;
         };
     }
     data;
@@ -109,7 +120,24 @@ enum tKatUsbCommand
 
     cCloseVibration = 0xA0,
     cSetOutput = 0xA1, // LED & Vibration
+
+#if defined(CONFIG_APP_FEET_ROTATION)
+    // Non-KAT protocol extension command to tweak extended settings.
+    cNRFSettingGet = 0xDC,
+    cNRFSettingSet = 0xDD,
+#endif
 };
+
+#if defined(CONFIG_APP_FEET_ROTATION)
+/* nRF settings */
+enum tKatExtendedUsbParam
+{
+    #ifdef CONFIG_APP_FEET_ROTATION
+    csFootAngles = 0xFA,
+    #endif
+};
+#endif
+
 
 // We use single buffer for commands & answers and separate buffer for notifications
 #define KAT_USB_BUF_CONF 0
@@ -223,6 +251,29 @@ bool kat_usb_handle_request(uint8_t *buf, int size)
         // Noop, we don't have control for LED of vibration here.
         return false;
 
+#if defined(CONFIG_APP_FEET_ROTATION)
+    case cNRFSettingSet:
+        switch(pack->data.ansnrfsetting.nrfSettingId) {
+        #ifdef CONFIG_APP_FEET_ROTATION
+        case csFootAngles:
+            KatCorrectLeft = pack->data.ansnrfsetting.footCorrection.left;
+            KatCorrectRight = pack->data.ansnrfsetting.footCorrection.right;
+        #endif
+        }
+        kat_settings_async_save();
+        [[fallthrough]];
+    case cNRFSettingGet:
+        switch(pack->data.ansnrfsetting.nrfSettingId) {
+        #ifdef CONFIG_APP_FEET_ROTATION
+        case csFootAngles:
+            pack->data.ansnrfsetting.footCorrection.left = KatCorrectLeft;
+            pack->data.ansnrfsetting.footCorrection.right = KatCorrectRight;
+            return true;
+        #endif
+        }
+        return false;
+#endif
+
     default:
         printk("Unknown USB packet [%2d]:", size);
         for (int i = 0; i < size; ++i)
@@ -285,9 +336,28 @@ static uint8_t *kat_usb_encode_data(eKatDevice devId, sKatDeviceInfo *katDevice)
     case KAT_RIGHT:
         b->data.ansfoot.status1 = katDevice->footData.status1;
         b->data.ansfoot.status2 = katDevice->footData.status2;
+        b->data.ansfoot.color = katDevice->footData.color;
+
+#ifdef CONFIG_APP_FEET_ROTATION
+        float angle = 0.0f;
+        if (katDevice->deviceType == KAT_RIGHT) {
+            angle = KatCorrectRight;
+        } else {
+            angle = KatCorrectLeft;
+        }
+        float sin_a = sinf(angle);
+        float cos_a = cosf(angle);
+
+        float x = (cos_a * (float)katDevice->footData.speed_x - sin_a * (float)katDevice->footData.speed_y) + 0.5f;
+        float y = (sin_a * (float)katDevice->footData.speed_x + cos_a * (float)katDevice->footData.speed_y) + 0.5f;
+
+        b->data.ansfoot.speed_x = CLAMP(x, -32767, 32767);
+        b->data.ansfoot.speed_y = CLAMP(y, -32767, 32767);
+#else
         b->data.ansfoot.speed_x = katDevice->footData.speed_x;
         b->data.ansfoot.speed_y = katDevice->footData.speed_y;
-        b->data.ansfoot.color = katDevice->footData.color;
+#endif
+
         return b->raw;
     case _KAT_MAX_DEVICE:
         [[fallthrough]];

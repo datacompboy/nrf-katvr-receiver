@@ -35,8 +35,8 @@ typedef struct
     // Latest data
     uint8_t status1;
     uint8_t status2;
-    uint16_t speed_x;
-    uint16_t speed_y;
+    int16_t speed_x;
+    int16_t speed_y;
     uint8_t color;
 } sKatFootDevice;
 
@@ -64,6 +64,13 @@ typedef struct
  */
 
 extern sKatDeviceInfo KatDeviceInfo[];
+
+#ifdef CONFIG_APP_FEET_ROTATION
+// Angle to turn data from left and right sensors before sending to PC.
+extern float KatCorrectLeft;
+extern float KatCorrectRight;
+#endif
+
 
 /*
  * Settings saving export.

@@ -15,29 +15,41 @@
 // Note: KatDeviceInfo[0] is unused, array idexed by eKatDevice
 sKatDeviceInfo KatDeviceInfo[_KAT_MAX_DEVICE] = {{KAT_NONE}};
 
+#ifdef CONFIG_APP_FEET_ROTATION
+// Angle to turn data from left and right sensors before sending to PC.
+float KatCorrectLeft = 0.0f;
+float KatCorrectRight = 0.0f;
+#endif
+
 /*
  * Settings management.
  */
 
 #ifdef CONFIG_SETTINGS
 
+#define READ_SIMPLE_SETTING(NAME, VAR, DEFAULT) \
+    if (settings_name_steq(key, NAME, &next) && !next) { \
+        if (len != sizeof(VAR)) {                        \
+            return -EINVAL;                              \
+        }                                                \
+        ret = read_cb(cb_arg, &VAR, sizeof(VAR));        \
+        if (ret < 0) {                                   \
+            VAR = DEFAULT;                               \
+            return ret;                                  \
+        }                                                \
+        return 0;                                        \
+    }
+
 int kat_settings_set_cb(const char *key, size_t len, settings_read_cb read_cb, void *cb_arg)
 {
     const char *next;
     int ret;
 
-    if (settings_name_steq(key, "devCnt", &next) && !next) {
-        if (len != sizeof(NumKatBleDevices)) {
-            return -EINVAL;
-        }
-
-        ret = read_cb(cb_arg, &NumKatBleDevices, sizeof(NumKatBleDevices));
-        if (ret < 0) {
-            NumKatBleDevices = 0;
-            return ret;
-        }
-        return 0;
-    }
+#ifdef CONFIG_APP_FEET_ROTATION
+    READ_SIMPLE_SETTING("correctLeft", KatCorrectLeft, 0.0f);
+    READ_SIMPLE_SETTING("correctRight", KatCorrectRight, 0.0f);
+#endif
+    READ_SIMPLE_SETTING("devCnt", NumKatBleDevices, 0);
 
     if (settings_name_steq(key, "serial", &next) && !next) {
         if (len != sizeof(katUsbSerial)) {
@@ -80,6 +92,14 @@ int kat_settings_set_cb(const char *key, size_t len, settings_read_cb read_cb, v
 int kat_settings_export_cb(int(*export_func)(const char *name, const void *val, size_t val_len))
 {
     int ret;
+
+#ifdef CONFIG_APP_FEET_ROTATION
+    ret = export_func("katrc/correctLeft", &KatCorrectLeft, sizeof(KatCorrectLeft));
+    if (ret < 0) return ret;
+
+    ret = export_func("katrc/correctRight", &KatCorrectRight, sizeof(KatCorrectRight));
+    if (ret < 0) return ret;
+#endif
 
     ret = export_func("katrc/serial", &katUsbSerial, sizeof(katUsbSerial));
     if (ret < 0) return ret;
