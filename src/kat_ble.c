@@ -157,8 +157,23 @@ static const struct bt_conn_le_create_param btConnCreateParam = BT_CONN_LE_CREAT
 
 // Note: btConnParam and btConnParamUpdate should differ by only for timeout argument.
 #define KAT_BT_CONN_PARAM(timeout) BT_LE_CONN_PARAM_INIT(CONFIG_APP_KAT_CONN_INTERVAL, CONFIG_APP_KAT_CONN_INTERVAL, 5, timeout)
-static const struct bt_le_conn_param btConnParam = KAT_BT_CONN_PARAM(500);
-static const struct bt_le_conn_param btConnParamUpdate = KAT_BT_CONN_PARAM(100);
+static struct bt_le_conn_param btConnParam = KAT_BT_CONN_PARAM(500);
+static struct bt_le_conn_param btConnParamUpdate = KAT_BT_CONN_PARAM(100);
+
+#ifdef CONFIG_APP_KAT_FREQ_PARAM
+short KatBleUpdateFrequency = 86;
+void kat_ble_update_freq_param()
+{
+    short interval = 800 / KatBleUpdateFrequency;
+    interval = CLAMP(interval, 6, 16);
+    KatBleUpdateFrequency = 800 / interval;
+    btConnParam.interval_max = interval;
+    btConnParam.interval_min = interval;
+    btConnParamUpdate.interval_max = interval;
+    btConnParamUpdate.interval_min = interval;
+    printk("Set connection interval to %d (%d Hz update rate)\n", interval, KatBleUpdateFrequency);
+}
+#endif
 
 ASYNC_FUNC(kat_ble_connect_next, K_MSEC(100))
 {

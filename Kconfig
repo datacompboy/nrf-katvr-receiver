@@ -33,7 +33,10 @@ config APP_FEET_ROTATION
 
 choice
     prompt "Frequency of KAT Sensors refreshment"
-    default APP_KAT_FREQ_100
+    default APP_KAT_FREQ_PARAM
+
+config APP_KAT_FREQ_PARAM
+    bool "Use configurable refresh rate 50..133 Hz"
 
 config APP_KAT_FREQ_133
     bool "Use 133Hz refresh rate (unstable)"
@@ -43,6 +46,9 @@ config APP_KAT_FREQ_114
 
 config APP_KAT_FREQ_100
     bool "Use 100Hz refresh rate"
+
+config APP_KAT_FREQ_86
+    bool "Use ~86Hz refresh rate (like standard receiver)"
 
 config APP_KAT_FREQ_80
     bool "Use 80Hz refresh rate"
@@ -62,9 +68,11 @@ endchoice
 # with at least 2 intervals required for each sensor to update.
 config APP_KAT_CONN_INTERVAL
     int
+    default 9 if APP_KAT_FREQ_PARAM  # default param == default receiver
     default 6 if APP_KAT_FREQ_133
     default 7 if APP_KAT_FREQ_114
     default 8 if APP_KAT_FREQ_100
+    default 9 if APP_KAT_FREQ_86
     default 10 if APP_KAT_FREQ_80
     default 12 if APP_KAT_FREQ_67
     default 14 if APP_KAT_FREQ_57

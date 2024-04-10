@@ -11,6 +11,12 @@
  * BLE subsystem management API and settings.
  */
 
+// Dynamic setting settings update frequency
+#ifdef CONFIG_APP_KAT_FREQ_PARAM
+extern short KatBleUpdateFrequency;
+void kat_ble_update_freq_param();
+#endif
+
 // Number of paired bluetooth sensors
 extern int NumKatBleDevices;
 

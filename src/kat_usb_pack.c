@@ -78,15 +78,21 @@ typedef __PACKED_UNION
                 // 5 unused bytes
             }
             ansfoot;
+            #ifdef __KAT_CONFIG_COMMANDS__
             __PACKED_STRUCT
             {
                 uint8_t nrfSettingId;
-                __PACKED_STRUCT
+                __PACKED_UNION
                 {
-                    float left, right;
-                } footCorrection;
+                    __PACKED_STRUCT
+                    {
+                        float left, right;
+                    } footCorrection;
+                    short updateFreq;
+                };
             }
             ansnrfsetting;
+            #endif
         };
     }
     data;
@@ -121,19 +127,22 @@ enum tKatUsbCommand
     cCloseVibration = 0xA0,
     cSetOutput = 0xA1, // LED & Vibration
 
-#if defined(CONFIG_APP_FEET_ROTATION)
+#if defined(__KAT_CONFIG_COMMANDS__)
     // Non-KAT protocol extension command to tweak extended settings.
     cNRFSettingGet = 0xDC,
     cNRFSettingSet = 0xDD,
 #endif
 };
 
-#if defined(CONFIG_APP_FEET_ROTATION)
+#if defined(__KAT_CONFIG_COMMANDS__)
 /* nRF settings */
 enum tKatExtendedUsbParam
 {
     #ifdef CONFIG_APP_FEET_ROTATION
     csFootAngles = 0xFA,
+    #endif
+    #ifdef CONFIG_APP_KAT_FREQ_PARAM
+    csUpdateFreq = 0xF0,
     #endif
 };
 #endif
@@ -251,19 +260,35 @@ bool kat_usb_handle_request(uint8_t *buf, int size)
         // Noop, we don't have control for LED of vibration here.
         return false;
 
-#if defined(CONFIG_APP_FEET_ROTATION)
+#if defined(__KAT_CONFIG_COMMANDS__)
     case cNRFSettingSet:
         switch(pack->data.ansnrfsetting.nrfSettingId) {
+
+        #ifdef CONFIG_APP_KAT_FREQ_PARAM
+        case csUpdateFreq:
+            KatBleUpdateFrequency = pack->data.ansnrfsetting.updateFreq;
+            kat_ble_update_freq_param();
+            break;
+        #endif
+
         #ifdef CONFIG_APP_FEET_ROTATION
         case csFootAngles:
             KatCorrectLeft = pack->data.ansnrfsetting.footCorrection.left;
             KatCorrectRight = pack->data.ansnrfsetting.footCorrection.right;
+            break;
         #endif
         }
         kat_settings_async_save();
         [[fallthrough]];
     case cNRFSettingGet:
         switch(pack->data.ansnrfsetting.nrfSettingId) {
+
+        #ifdef CONFIG_APP_KAT_FREQ_PARAM
+        case csUpdateFreq:
+            pack->data.ansnrfsetting.updateFreq = KatBleUpdateFrequency;
+            return true;
+        #endif
+            
         #ifdef CONFIG_APP_FEET_ROTATION
         case csFootAngles:
             pack->data.ansnrfsetting.footCorrection.left = KatCorrectLeft;

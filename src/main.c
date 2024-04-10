@@ -49,6 +49,9 @@ int kat_settings_set_cb(const char *key, size_t len, settings_read_cb read_cb, v
     READ_SIMPLE_SETTING("correctLeft", KatCorrectLeft, 0.0f);
     READ_SIMPLE_SETTING("correctRight", KatCorrectRight, 0.0f);
 #endif
+#ifdef CONFIG_APP_KAT_FREQ_PARAM
+    READ_SIMPLE_SETTING("updateFreq", KatBleUpdateFrequency, (kat_ble_update_freq_param(), 86));
+#endif
     READ_SIMPLE_SETTING("devCnt", NumKatBleDevices, 0);
 
     if (settings_name_steq(key, "serial", &next) && !next) {
@@ -98,6 +101,11 @@ int kat_settings_export_cb(int(*export_func)(const char *name, const void *val, 
     if (ret < 0) return ret;
 
     ret = export_func("katrc/correctRight", &KatCorrectRight, sizeof(KatCorrectRight));
+    if (ret < 0) return ret;
+#endif
+
+#ifdef CONFIG_APP_KAT_FREQ_PARAM
+    ret = export_func("katrc/updateFreq", &KatBleUpdateFrequency, sizeof(KatBleUpdateFrequency));
     if (ret < 0) return ret;
 #endif
 

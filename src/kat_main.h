@@ -104,4 +104,9 @@ void kat_settings_async_save(void);
     void _do_async_##name(struct k_work *)
 
 
+// Enable configuration subsystem if any of the dynamic params enabled
+#if defined(CONFIG_APP_FEET_ROTATION) || defined(CONFIG_APP_KAT_FREQ_PARAM)
+#define __KAT_CONFIG_COMMANDS__
+#endif
+
 #endif // __KAT_MAIN_H__
