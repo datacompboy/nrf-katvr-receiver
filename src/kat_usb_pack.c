@@ -47,6 +47,13 @@ typedef __PACKED_UNION
             ansaddrs;
             __PACKED_STRUCT
             {
+                uint8_t count;
+                uint8_t addrs[4][6]; // maximum 4 child MACs fits
+                uint8_t zero;
+            }
+            writeaddrs; // Differs from 'ansaddrs', there is no zero byte before count!
+            __PACKED_STRUCT
+            {
                 uint8_t sensor_id;
                 uint8_t sensor_type;
                 uint8_t chargeStatus;
@@ -195,7 +202,7 @@ bool kat_usb_handle_request(uint8_t *buf, int size)
 
     case cGetSN:
         pack->data.ansstring.zero = 0;
-        strncpy(pack->data.ansstring.ans, CONFIG_USB_DEVICE_SN, KAT_USB_PACKET_LEN - 8);
+        strncpy(pack->data.ansstring.ans, katUsbSerial, KAT_USB_PACKET_LEN - 8);
         pack->data.ansstring.ans[sizeof(pack->data.ansstring.ans) - 1] = 0; // ensure null termination
         return true;
 
@@ -224,16 +231,18 @@ bool kat_usb_handle_request(uint8_t *buf, int size)
         return true;
 
     case cWritePairing:
-        const int wcnt = MIN(ARRAY_SIZE(KatBleDevices), pack->data.ansaddrs.count);
+        const int wcnt = MIN(ARRAY_SIZE(KatBleDevices), pack->data.writeaddrs.count);
         NumKatBleDevices = wcnt;
         for (int i = 0; i < wcnt; ++i)
         {
-            BUILD_ASSERT(sizeof(pack->data.ansaddrs.addrs[i]) == sizeof(KatBleDevices[i].a), "Size of BT address should match");
-            memcpy(&KatBleDevices[i].a, &pack->data.ansaddrs.addrs[i], sizeof(KatBleDevices[i].a));
+            BUILD_ASSERT(sizeof(pack->data.writeaddrs.addrs[i]) == sizeof(KatBleDevices[i].a), "Size of BT address should match");
+            memcpy(&KatBleDevices[i].a, &pack->data.writeaddrs.addrs[i], sizeof(KatBleDevices[i].a));
         }
         kat_ble_update_devices();
         kat_settings_async_save();
-        return false;
+        // original receiver returns only command confirmation packet, no data
+        memset(&pack->data.writeaddrs, 0, sizeof(pack->data.writeaddrs));
+        return true;
 
     case cDeepSleep:
         return false;
