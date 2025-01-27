@@ -31,6 +31,8 @@ Copy-Item "$builddir/c2core/zephyr/zephyr.uf2" "$bindir/nrf_receiver_walk_c2_cor
 Copy-Item "$dir/scripts/install/*" "$bindir/"
 Copy-Item "$dir/README.md" "$bindir/README.txt"
 Copy-Item -Recurse "$dir/scripts/sensors" "$bindir/"
+mkdir -Path "$bindir/config"
+Copy-Item "$dir/scripts/config/*freq*" "$bindir/config"
 Compress-Archive -Path $bindir -DestinationPath "${bindir}.zip"
 
 Remove-Item -Recurse "$builddir"
