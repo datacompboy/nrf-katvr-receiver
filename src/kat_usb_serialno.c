@@ -57,6 +57,10 @@ static struct usb_sn_descriptor * find_sn_descriptor()
 }
 void kat_usb_update_serial(void)
 {
+    if (!katUsbSerial[0]) {
+        printk("No serialNo override set, keeping random.\n");
+        return;
+    }
     struct usb_sn_descriptor * serial = find_sn_descriptor();
     if (!serial) {
         printk("Can't find USB Serial descriptor!\n");
