@@ -1,5 +1,10 @@
 # Script configuration
-$katPath = "C:\Program Files (x86)\KAT Gateway\"
+$gateway = (Get-ItemProperty "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\KAT Gateway.exe").'(default)'
+if ($gateway -ne '') {
+    $katPath = Split-Path $gateway
+} else {
+    $katPath = "C:\Program Files (x86)\KAT Gateway"
+}
 
 # Load Gateway's communication helper library
 if (!(Test-Path $katPath -PathType Container)) {
@@ -10,7 +15,12 @@ if (Get-Process -name "KAT Gateway" -ErrorAction SilentlyContinue) {
     throw "Please stop KAT Gateway."
 }
 
-Add-Type -Path "C:\Program Files (x86)\KAT Gateway\IBizLibrary.dll"
+ $kernel32 = Add-Type -Name 'Kernel32' -Namespace 'Win32' -PassThru -MemberDefinition @'
+    [DllImport("kernel32.dll", SetLastError = true, CharSet=CharSet.Auto)]
+    public static extern bool SetDllDirectory(string lpPathName);
+'@
+$kernel32::SetDllDirectory($katPath)
+Add-Type -Path "${katPath}\IBizLibrary.dll"
 
 #
 # Detect known Receiver version
@@ -23,7 +33,12 @@ if (Test-Path([IBizLibrary.ComUtility]::Device_Config_File_Walk_C2_Path)) {
     if (Test-Path([IBizLibrary.ComUtility]::Device_Config_File_Walk_C2_Path)) {
         Write-Host "Gateway with configuration for Kat Walk C2 Core detected."
     } else {
-        throw "Not found gateway configuration for neither Kat Walk C2/C2+ nor C2 Core."
+        [IBizLibrary.ComUtility]::KatDevice='walk_c2_plus_enhanced'
+        if (Test-Path([IBizLibrary.ComUtility]::Device_Config_File_Walk_C2_Path)) {
+            Write-Host "Gateway with configuration for Kat Walk C2+Enhanced detected."
+        } else {
+            throw "Not found gateway configuration for neither Kat Walk C2/C2+ nor C2 Core nor C2+ Enhanced."
+        }
     }
 }
 [IBizLibrary.Configs].GetMethod('C2ReceiverPairingInfoRead').invoke($null, $null)
@@ -51,8 +66,10 @@ if (Get-Volume -FileSystemLabel "XIAO-SENSE" -ErrorAction SilentlyContinue)
 # Check the connected device.
 #
 [IBizLibrary.KATSDKInterfaceHelper].GetMethod('GetDeviceConnectionStatus').invoke($null, $null)
+Start-Sleep -Seconds 3
+[IBizLibrary.KATSDKInterfaceHelper].GetMethod('GetDeviceConnectionStatus').invoke($null, $null)
 
-$platforms = [IBizLibrary.KATSDKInterfaceHelper]::walk_c2_Count + [IBizLibrary.KATSDKInterfaceHelper]::walk_c2_core_Count
+$platforms = [IBizLibrary.KATSDKInterfaceHelper]::walk_c2_Count + [IBizLibrary.KATSDKInterfaceHelper]::walk_c2_core_Count + [IBizLibrary.KATSDKInterfaceHelper]::walk_c2_plus_enhanced_Count; 
 
 if ($platforms -lt 1) {
     throw "Please connect the receiver USB dongle."
@@ -68,8 +85,11 @@ if ([IBizLibrary.KATSDKInterfaceHelper]::walk_c2_Count -eq 1 -and [IBizLibrary.C
 if ([IBizLibrary.KATSDKInterfaceHelper]::walk_c2_core_Count -eq 1 -and [IBizLibrary.ComUtility]::KatDevice -ne 'walk_c2_core') {
     throw "The dongle flashed for Kat Walk C2 Core, but gateway configuration is not."
 }
+if ([IBizLibrary.KATSDKInterfaceHelper]::walk_c2_plus_enhanced_Count -eq 1 -and [IBizLibrary.ComUtility]::KatDevice -ne 'walk_c2_plus_enhanced') {
+    throw "The dongle flashed for Kat Walk C2+ Enhanced, but gateway configuration is not."
+}
 
-$dev = New-Object IBizLibrary.KATSDKInterfaceHelper+KATModels
+$dev = New-Object IBizLibrary.KATSDKInterfaceHelper+KATDeviceDesc
 for($devNo=0; $devNo -lt [IBizLibrary.KATSDKInterfaceHelper]::deviceCount; $devNo ++) {
     [IBizLibrary.KATSDKInterfaceHelper]::GetDevicesDesc([ref]$dev, $devNo)
     if ($dev.deviceType -eq 1) {
