@@ -1,5 +1,5 @@
 # Script configuration
-. ..\_kat-lib.ps1
+. .\z_kat-lib.ps1
 LoadKatFunctions
 
 if (Get-Process -name "KAT Gateway" -ErrorAction SilentlyContinue) {
