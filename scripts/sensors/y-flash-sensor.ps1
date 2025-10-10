@@ -8,22 +8,12 @@ param (
 )
 
 # Script configuration
-$katPath = "C:\Program Files (x86)\KAT Gateway\"
+. .\z_kat-lib.ps1
+$katPath = LoadKatFunctions "KAT_WalkC2_Dx.dll"
 
-# Load Gateway's communication helper library
-if (!(Test-Path $katPath -PathType Container)) {
-    throw  "KAT Gateway expected to be installed in '${katPath}'"
-}
+$firmware = $katPath + "\katvr_" + $orig + ".hex"
 
-if (Get-Process -name "KAT Gateway" -ErrorAction SilentlyContinue) {
-    throw "Please stop KAT Gateway."
-}
-
-Add-Type -Path "C:\Program Files (x86)\KAT Gateway\KAT_WalkC2_Dx.dll"
-
-$firmware = $katPath + "katvr_" + $orig + ".hex"
-
-if (!(Test-Path $katPath)) {
+if (!(Test-Path $firmware)) {
     throw "Original sensor firmware is not found at '$firmware'"
 }
 
@@ -34,9 +24,9 @@ if ($patch -ne "") {
         throw "Failed to patch the firmware file."
     }
     $firmware = $newfw
-    Write-Host "Flashing the PATCH for " + $orig
+    Write-Host "Flashing the PATCH for ${orig}"
 } else {
-    Write-Host "Restoring the ORIGINAL firmware for " + $orig
+    Write-Host "Restoring the ORIGINAL firmware for ${orig}"
 }
 
 Write-Host "Using file $firmware"
@@ -59,4 +49,5 @@ if ([KAT_WalkC2_Dx.KatvrFirmwareHelper]::flash($firmware, $type, 0) -ne 1) {
 [KAT_WalkC2_Dx.KatvrFirmwareHelper]::ch9326_ClearThreadData()
 [KAT_WalkC2_Dx.KatvrFirmwareHelper]::close_ch9326()
 Start-Sleep 1
+Write-Host "Sensor firmware is written. Trying to restore pairing..."
 .\y-upload-sensor-config.ps1

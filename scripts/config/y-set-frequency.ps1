@@ -3,7 +3,7 @@ param (
 )
 #
 . .\z_kat-lib.ps1
-LoadKatFunctions
+$null = LoadKatFunctions
 #
 $devNo = -1
 $dev = FindKatTreadmill([ref]$devNo)

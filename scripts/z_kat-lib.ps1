@@ -1,15 +1,15 @@
 # Common KAT functions helpers library
 
 # Detect the Gateway location and load IBizLibrary
-function LoadKatFunctions {
-    if (-not('IBizLibrary.KATSDKInterfaceHelper' -as [type])) {
-        $gateway = (Get-ItemProperty "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\KAT Gateway.exe").'(default)'
-        if ($gateway -ne '') {
-            $katPath = Split-Path $gateway
-        } else {
-            $katPath = "C:\Program Files (x86)\KAT Gateway"
-        }
+function LoadKatFunctions([string]$extra='') {
+    $gateway = (Get-ItemProperty "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\KAT Gateway.exe").'(default)'
+    if ($gateway -ne '') {
+        $katPath = Split-Path $gateway
+    } else {
+        $katPath = "C:\Program Files (x86)\KAT Gateway"
+    }
 
+    $null = if (-not('IBizLibrary.KATSDKInterfaceHelper' -as [type])) {
         # Load Gateway's communication helper library
         if (!(Test-Path $katPath -PathType Container)) {
             throw  "KAT Gateway expected to be installed in '${katPath}'"
@@ -21,7 +21,12 @@ function LoadKatFunctions {
 
         $kernel32::SetDllDirectory($katPath)
         Add-Type -Path "${katPath}\IBizLibrary.dll"
+        if($extra -ne '') {
+            Add-Type -Path "${katPath}\$extra"
+        }
     }
+
+    return $katPath
 }
 
 #
@@ -86,6 +91,28 @@ function FindKatTreadmill ([ref]$refDevNo=[ref]0, $forceNew=$true) {
         $refDevNo.Value = $devNo
     )
     return $dev
+}
+
+#
+# Check for connected sensors.
+#
+function FindKatSensor {
+    # 0x6F37 -- c2 foot
+    # 0x7F37 -- c2 direction
+    # 0x8F37 -- c2+ vehicle hub
+    # 0xBF37 -- c2core vehicle hub
+    # 0x4F37 -- c2core direction
+    # 0x5F37 -- c2core foot
+    $vid = 0xC4F4
+    $dev = New-Object IBizLibrary.KATSDKInterfaceHelper+KATDeviceDesc
+    foreach($dpid in @(0x6F37, 0x7F37, 0x4F37, 0x5F37)) {
+        $devCnt = Invoke-NulRedirected { [IBizLibrary.KATSDKInterfaceHelper]::GetLocalHIDDeviceCount($dpid, $vid); }
+        for($devNo=0; $devNo -lt $devCnt; $devNo ++) {
+            $null = Invoke-NulRedirected { [IBizLibrary.KATSDKInterfaceHelper]::GetLcoalHIDDevice([ref]$dev, $dpid, $vid, $devNo); }
+            return $dev
+        }
+    }
+    return $null
 }
 
 function KatSendHIDCommand([string]$serial, [byte[]]$cmd_and_args) {

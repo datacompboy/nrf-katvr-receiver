@@ -1,6 +1,6 @@
 # Script configuration
 . .\z_kat-lib.ps1
-LoadKatFunctions
+$null = LoadKatFunctions
 
 if (Get-Process -name "KAT Gateway" -ErrorAction SilentlyContinue) {
     throw "Please stop KAT Gateway."
