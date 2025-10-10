@@ -16,11 +16,13 @@ Read article about it at [Medium] or [LinkedIn] or [Habr].
 
 ## READ ME!
 
-This is a version of the receiver that is designed to work at 133Hz with the sensors.
+The receiver can provide lower latency by working at up to 133Hz, but that requires patching firmware of all 3 sensors.
 
-**While this leads to lower latencies, it requires to use a fixed firmware for all sensors you use.**
+Run `set-freq-88hz.cmd` script for maximum compatibility, `set-freq-100hz` to change receiver frequency to compatibly but faster.
 
-## Installation on Seeed Stdio XIAO nRF52840 dongle
+The `set-freq-133hz.cmd` allows to run at maximum speed,  but it requires to use a fixed firmware for all sensors you use.
+
+## Installation on Seeed Studio XIAO nRF52840 dongle by cloning existing receiver
 
 - Download binary release package
 - Unpack
@@ -44,6 +46,30 @@ If you want to restore sensor firmware back to stock: do the same, but run "rest
 
 You need an updated firmware to enjoy lower latencies with this receiver, but the use of fixed firmware with the official
 receiver will lead to very-very fast movement in games... I'm working on a better solution.
+
+## Installation on Seeed Studio XIAO nRF52840 dongle when you don't have working receiver
+
+If your existing receiver is not working and you don't have configuration in your gateway, you still need to install KAT gateway,
+but then do this:
+
+- Download binary release package
+- Unpack
+- Exit from the KAT Gateway
+- Connect your Seeed Studio XIAO nRF52840 dongle to usb port and double-press the reset button (left from the usb port),
+  so that new drive explorer window pops ups.
+- Manually copy version of the firmware that matches your original receiver:
+  - `nrf_receiver_walk_c2.uf2` for C2 or C2+
+  - `nrf_receiver_walk_c2_core.uf2` for C2Core
+  - `nrf_receiver_walk_c2_plus_enhanced.uf2` for C2+ Enhanced.
+- Once you copy it, soon the driver will disappear -- the dongle will enter the receiver mode.
+- Run the `write-serial.cmd` script and enter the original serial number from you old receiver (it is written on your treadmill,
+  and looks like "CRA2xxxxxxx"), confirm with enter, and the receiver will get the updated serial number.
+- Run the gateway and pair your new receiver with your sensors like you would do for the new treadmill.
+
+You may skip write-serial step, then receiver will have some random serial number that is more-or-less unique for each of the
+dongles.
+
+You may switch frequency and update sensors firmware same as in the description above.
 
 ## Features
 

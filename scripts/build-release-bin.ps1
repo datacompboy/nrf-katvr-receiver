@@ -21,6 +21,10 @@ west build -b xiao_ble --build-dir "$builddir/c2core" $dir -- -DOVERLAY_CONFIG="
 if ($LastExitCode) {
     exit $LastExitCode
 }
+west build -b xiao_ble --build-dir "$builddir/c2penh" $dir -- -DOVERLAY_CONFIG="prj_c2penh.conf"
+if ($LastExitCode) {
+    exit $LastExitCode
+}
 
 if (Test-Path($bindir)) {
     Remove-Item -Recurse "$bindir"
@@ -28,11 +32,17 @@ if (Test-Path($bindir)) {
 mkdir -Path $bindir
 Copy-Item "$builddir/c2/zephyr/zephyr.uf2" "$bindir/nrf_receiver_walk_c2.uf2"
 Copy-Item "$builddir/c2core/zephyr/zephyr.uf2" "$bindir/nrf_receiver_walk_c2_core.uf2"
+Copy-Item "$builddir/c2penh/zephyr/zephyr.uf2" "$bindir/nrf_receiver_walk_c2_plus_enhanced.uf2"
 Copy-Item "$dir/scripts/install/*" "$bindir/"
 Copy-Item "$dir/README.md" "$bindir/README.txt"
 Copy-Item -Recurse "$dir/scripts/sensors" "$bindir/"
 mkdir -Path "$bindir/config"
 Copy-Item "$dir/scripts/config/*freq*" "$bindir/config"
+# Replace symlink lib with lib itself
+Copy-Item "$dir/scripts/z_kat-lib.ps1" "$bindir/"
+Copy-Item "$dir/scripts/z_kat-lib.ps1" "$bindir/sensors"
+Copy-Item "$dir/scripts/z_kat-lib.ps1" "$bindir/config"
+
 Compress-Archive -Path $bindir -DestinationPath "${bindir}.zip"
 
 Remove-Item -Recurse "$builddir"
