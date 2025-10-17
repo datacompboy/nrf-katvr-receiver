@@ -56,6 +56,6 @@ if ($dev.serialNumber -ne $newSn) {
 }
 
 # Write the pairing info
-$null = KatSendHIDCommand $dev.serialNumber @(,$20 + [IBizLibrary.KATSDKInterfaceHelper]::receiverPairingInfoSave.ReceiverPairingByte)
+$null = KatSendHIDCommand $dev.serialNumber @(,0x20 + [IBizLibrary.KATSDKInterfaceHelper]::receiverPairingInfoSave.ReceiverPairingByte)
 
 Write-Host "Congratulations! The device is ready to use."
